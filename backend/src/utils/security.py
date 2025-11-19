@@ -60,3 +60,93 @@ async def get_current_agent_user(current_user: User = Depends(get_current_user))
             detail="Access restricted to agents only"
         )
     return current_user
+
+
+# WebSocket authentication utilities
+async def validate_websocket_token(token: str) -> User:
+    """
+    Validate JWT token for WebSocket connections.
+    Similar to get_current_user but doesn't use OAuth2 scheme.
+
+    Args:
+        token: The JWT token string
+
+    Returns:
+        User: The authenticated user
+
+    Raises:
+        HTTPException: If token is invalid or user not found
+    """
+    from datetime import datetime, timezone
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No authentication token provided"
+        )
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+        # Check token expiration
+        exp = payload.get("exp")
+        if exp:
+            exp_datetime = datetime.fromtimestamp(exp, tz=timezone.utc)
+            if exp_datetime < datetime.now(timezone.utc):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has expired"
+                )
+
+        email: str = payload.get("sub")
+        if email is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: missing subject claim"
+            )
+
+        user = await User.find_one(User.email == email)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found"
+            )
+
+        return user
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired"
+        )
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}"
+        )
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Could not validate credentials: {str(e)}"
+        )
+
+
+def extract_token_from_query(token: str = None) -> str:
+    """
+    Extract and validate token from WebSocket query parameter.
+
+    Args:
+        token: Token from query parameter
+
+    Returns:
+        str: The token string
+
+    Raises:
+        HTTPException: If token is missing
+    """
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="WebSocket connection requires authentication token"
+        )
+    return token
