@@ -35,6 +35,7 @@ class AIService:
         # Send to LangChain summary function
         summary = await summarize_ticket_data(summary_data)
         return TicketSummaryResponse(summary=summary)
+
     @staticmethod
     async def get_closing_comments(ticket_id: str) -> str:
         ticket = await TicketService.get_ticket(ticket_id)

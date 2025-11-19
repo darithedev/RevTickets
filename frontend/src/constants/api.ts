@@ -57,5 +57,6 @@ export const API_ENDPOINTS = {
     BASE: '/articles',
     BY_ID: (id: string) => `/articles/${id}`,
     SEARCH: '/articles/search',
+    GENERATE_TAGS: (id: string) => `/articles/${id}/generate-tags`,
   },
 } as const;
