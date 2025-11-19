@@ -3,13 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Breadcrumb, BreadcrumbItem, Button, Avatar, Textarea } from 'flowbite-react';
-import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home } from 'lucide-react';
+import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { RichTextEditor } from '../../../src/app/shared/components/RichTextEditor';
 import { ticketsApi } from '../../../src/lib/api';
-import { formatFullDateTime, canEditComment, getEditTimeRemaining } from '../../../src/lib/utils';
+import { formatFullDateTime, canEditComment, getEditTimeRemaining, canReopenTicket, getReopenTimeRemaining } from '../../../src/lib/utils';
 import { useAuth } from '../../../src/contexts/AuthContext';
 import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus } from '../../../src/app/shared/types';
 import { createEmptyRichText, convertLegacyContent } from '../../../src/lib/utils';
@@ -34,6 +34,11 @@ export default function TicketDetailPage() {
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentContent, setEditCommentContent] = useState<RichTextContent>(createEmptyRichText());
   const [savingEdit, setSavingEdit] = useState(false);
+
+  // Reopen ticket states
+  const [showReopenForm, setShowReopenForm] = useState(false);
+  const [reopenReason, setReopenReason] = useState('');
+  const [reopening, setReopening] = useState(false);
 
   const fetchTicketData = useCallback(async () => {
     if (!ticketId) return;
@@ -174,8 +179,31 @@ export default function TicketDetailPage() {
     }
   };
 
+  // Reopen ticket handler
+  const handleReopenTicket = async () => {
+    if (!ticketId || !ticket) return;
+
+    try {
+      setReopening(true);
+      const updatedTicket = await ticketsApi.reopenTicket(ticketId, reopenReason);
+      setTicket(updatedTicket);
+      setReopenReason('');
+      setShowReopenForm(false);
+    } catch (error) {
+      console.error('Failed to reopen ticket:', error);
+    } finally {
+      setReopening(false);
+    }
+  };
+
   // Check if current user can modify this ticket (agent assigned to it)
   const canModifyTicket = user?.role === 'agent' && ticket?.agentInfo?.id === user.id;
+
+  // Check if ticket can be reopened (by the original user, within 10 business days)
+  const canReopen = user?.id === ticket?.userInfo?.id &&
+    (ticket?.status === 'closed' || ticket?.status === 'resolved') &&
+    ticket?.closedAt &&
+    canReopenTicket(ticket.closedAt);
   
 
 
@@ -572,6 +600,67 @@ export default function TicketDetailPage() {
 
             {/* Actions Sidebar */}
             <div className="space-y-6">
+              {/* Reopen Ticket Card */}
+              {canReopen && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                      Reopen Ticket
+                    </h3>
+                  </div>
+                  <div className="p-4">
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                      Need more help with this issue? You can reopen this ticket.
+                    </p>
+                    <p className="text-xs text-gray-400 mb-3">
+                      {ticket.closedAt && getReopenTimeRemaining(ticket.closedAt)}
+                    </p>
+                    {!showReopenForm ? (
+                      <Button
+                        size="sm"
+                        className="w-full bg-blue-600 hover:bg-blue-700 focus:ring-blue-500 justify-start"
+                        onClick={() => setShowReopenForm(true)}
+                      >
+                        <RotateCcw className="h-4 w-4 mr-2" />
+                        Reopen Ticket
+                      </Button>
+                    ) : (
+                      <div className="space-y-3">
+                        <Textarea
+                          value={reopenReason}
+                          onChange={(e) => setReopenReason(e.target.value)}
+                          placeholder="Why do you need to reopen this ticket? (optional)"
+                          rows={3}
+                          className="w-full"
+                        />
+                        <div className="flex flex-col space-y-2">
+                          <Button
+                            size="sm"
+                            className="w-full bg-blue-600 hover:bg-blue-700 focus:ring-blue-500"
+                            onClick={handleReopenTicket}
+                            disabled={reopening}
+                          >
+                            {reopening ? 'Reopening...' : 'Confirm Reopen'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            color="gray"
+                            className="w-full"
+                            onClick={() => {
+                              setShowReopenForm(false);
+                              setReopenReason('');
+                            }}
+                            disabled={reopening}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons Card */}
               {canModifyTicket && ticket.status !== 'closed' && (
                 <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">

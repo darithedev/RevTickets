@@ -1,4 +1,4 @@
-import { format, parseISO, formatDistanceToNow, differenceInHours, differenceInMinutes } from 'date-fns';
+import { format, parseISO, formatDistanceToNow, differenceInHours, differenceInMinutes, addBusinessDays, differenceInBusinessDays, isWeekend } from 'date-fns';
 
 export const formatDate = (date: string | Date): string => {
   if (!date) return 'N/A';
@@ -94,4 +94,48 @@ export const getEditTimeRemaining = (createdAt: string): string => {
     console.error('Edit time remaining error:', error);
     return 'N/A';
   }
+};
+
+// Ticket reopening functions (10 business days)
+export const canReopenTicket = (closedAt: string): boolean => {
+  if (!closedAt) return false;
+  try {
+    const dateObj = typeof closedAt === 'string' ? parseISO(closedAt) : closedAt;
+    if (isNaN(dateObj.getTime())) return false;
+    const businessDaysSinceClosure = differenceInBusinessDays(new Date(), dateObj);
+    return businessDaysSinceClosure < 10;
+  } catch (error) {
+    console.error('Reopen time check error:', error);
+    return false;
+  }
+};
+
+export const getReopenTimeRemaining = (closedAt: string): string => {
+  if (!closedAt) return 'N/A';
+  try {
+    const dateObj = typeof closedAt === 'string' ? parseISO(closedAt) : closedAt;
+    if (isNaN(dateObj.getTime())) return 'N/A';
+
+    const reopenDeadline = addBusinessDays(dateObj, 10);
+    const now = new Date();
+
+    if (now >= reopenDeadline) return 'Reopen window expired';
+
+    const businessDaysRemaining = differenceInBusinessDays(reopenDeadline, now);
+
+    if (businessDaysRemaining > 1) {
+      return `${businessDaysRemaining} business days remaining`;
+    } else if (businessDaysRemaining === 1) {
+      return '1 business day remaining';
+    }
+    return 'Last day to reopen';
+  } catch (error) {
+    console.error('Reopen time remaining error:', error);
+    return 'N/A';
+  }
+};
+
+export const formatBusinessDaysFromNow = (days: number): string => {
+  const futureDate = addBusinessDays(new Date(), days);
+  return format(futureDate, 'MMM dd, yyyy');
 };
