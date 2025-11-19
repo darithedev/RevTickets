@@ -26,6 +26,9 @@ export interface Ticket {
   createdAt: string;
   updatedAt: string;
   closedAt?: string;
+  // SLA fields
+  slaDueDate?: string;
+  slaBreached: boolean;
 }
 
 export interface UserInfo {

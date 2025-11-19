@@ -142,7 +142,10 @@ class TicketService:
             priority=data.priority,
             tag_ids=tag_ids
         )
-        
+
+        # Setup SLA for the ticket
+        ticket = await SLAService.setup_sla(ticket)
+
         ticket = await ticket.insert()
         
         # Try to auto-assign the ticket to an appropriate agent
@@ -420,10 +423,14 @@ class TicketService:
         
         if new_status not in valid_transitions.get(ticket.status, []):
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=f"Invalid status transition from {ticket.status} to {new_status}"
             )
-        
+
+        # Handle SLA timer pause/resume based on status change
+        old_status = ticket.status
+        ticket = await SLAService.handle_status_change(ticket, old_status, new_status)
+
         # Update ticket
         ticket.status = new_status
         ticket.updated_at = datetime.now(timezone.utc)

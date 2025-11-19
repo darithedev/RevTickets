@@ -26,7 +26,12 @@ class Ticket(Document):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="updatedAt")
     closed_at: Optional[datetime] = Field(None, alias="closedAt")
 
+    # SLA fields
+    sla_due_date: Optional[datetime] = Field(None, description="SLA due date based on priority", alias="slaDueDate")
+    sla_breached: bool = Field(default=False, description="Whether the SLA has been breached", alias="slaBreached")
+    sla_paused_at: Optional[datetime] = Field(None, description="When SLA timer was paused", alias="slaPausedAt")
+    sla_pause_duration: int = Field(default=0, description="Total pause duration in seconds", alias="slaPauseDuration")
+
     class Settings:
         name = "tickets"  # MongoDB collection name
 
-    

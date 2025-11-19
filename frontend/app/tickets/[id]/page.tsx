@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Breadcrumb, BreadcrumbItem, Button, Avatar, Textarea } from 'flowbite-react';
-import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home } from 'lucide-react';
+import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, Bot } from 'lucide-react';
 import Link from 'next/link';
-import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
+import { MainLayout, ProtectedRoute, SLAIndicator } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { RichTextEditor } from '../../../src/app/shared/components/RichTextEditor';
 import { ticketsApi } from '../../../src/lib/api';
@@ -478,6 +478,30 @@ export default function TicketDetailPage() {
 
             {/* Actions Sidebar */}
             <div className="space-y-6">
+              {/* SLA Status - Agent Only */}
+              {user?.role === 'agent' && ticket.slaDueDate && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                      SLA Status
+                    </h3>
+                  </div>
+                  <div className="p-4">
+                    <SLAIndicator
+                      slaDueDate={ticket.slaDueDate}
+                      slaBreached={ticket.slaBreached}
+                      status={ticket.status}
+                      className="w-full justify-center"
+                    />
+                    {ticket.status === 'waiting_for_customer' && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                        Timer paused while waiting for customer
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Action Buttons Card */}
               {canModifyTicket && ticket.status !== 'closed' && (
                 <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -620,6 +644,20 @@ export default function TicketDetailPage() {
                         <dt className="font-medium text-gray-500 dark:text-gray-400 mb-1">Assigned to</dt>
                         <dd className="text-gray-900 dark:text-white">
                           {ticket.agentInfo.name || ticket.agentInfo.email}
+                        </dd>
+                      </div>
+                    )}
+                    {ticket.agentInfo && (
+                      <div>
+                        <dt className="font-medium text-gray-500 dark:text-gray-400 mb-1">Assignment Type</dt>
+                        <dd className="text-gray-900 dark:text-white">
+                          <div className="flex items-center space-x-2">
+                            <Bot className="h-4 w-4 text-blue-500" />
+                            <span className="text-sm">AI Auto-assigned</span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Matched by category and workload
+                          </p>
                         </dd>
                       </div>
                     )}
