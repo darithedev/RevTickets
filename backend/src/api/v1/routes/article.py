@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
-from src.schemas.article import ArticleCreate, ArticleUpdate, ArticleResponse
+from src.schemas.article import ArticleCreate, ArticleUpdate, ArticleResponse, GenerateTagsResponse
 from beanie import PydanticObjectId
 from src.services.article_service import ArticleService
+from src.services.ai_service import AIService
 from typing import List
 from src.utils.security import get_current_agent_user, get_current_user
 
@@ -46,3 +47,14 @@ async def get_articles_by_category(category_id: str):
 @router.get("/subcategory/{subcategory_id}", response_model=List[ArticleResponse], dependencies=[Depends(get_current_user)])
 async def get_articles_by_subcategory(subcategory_id: str):
     return await ArticleService.get_articles_by_subcategory(subcategory_id)
+
+@router.post("/{article_id}/generate-tags", response_model=GenerateTagsResponse, dependencies=[Depends(get_current_agent_user)])
+async def generate_article_tags(article_id: str):
+    """Generate AI-powered tags for an article."""
+    try:
+        tags = await AIService.generate_article_tags(article_id)
+        return GenerateTagsResponse(tags=tags)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate tags: {str(e)}")
