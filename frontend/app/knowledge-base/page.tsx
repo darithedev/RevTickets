@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Button, Card, Table, TableHead, TableHeadCell, TableRow, TableCell, TableBody } from 'flowbite-react';
-import { Plus, BookOpen, Calendar } from 'lucide-react';
+import { Button, Card, Table, TableHead, TableHeadCell, TableRow, TableCell, TableBody, TextInput } from 'flowbite-react';
+import { Plus, BookOpen, Calendar, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MainLayout, ProtectedRoute } from '../../src/app/shared/components';
@@ -12,12 +12,27 @@ import { formatFullDateTime } from '../../src/lib/utils';
 import { useAuth } from '../../src/contexts/AuthContext';
 import type { Article } from '../../src/app/shared/types';
 import { getRichTextDisplay } from '../../src/lib/utils';
+import { useDebounceSearch } from '../../src/hooks/useDebounceSearch';
 
 export default function KnowledgeBasePage() {
   const router = useRouter();
   const { user } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Search hook for KB articles
+  const searchArticles = useCallback(
+    (query: string) => articlesApi.search({ q: query }),
+    []
+  );
+
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    results: searchResults,
+    loading: searchLoading,
+    isSearching,
+  } = useDebounceSearch<Article[]>(searchArticles, 300);
 
   const fetchArticles = useCallback(async () => {
     try {
@@ -39,7 +54,8 @@ export default function KnowledgeBasePage() {
     router.push(`/knowledge-base/${articleId}`);
   };
 
-  const filteredArticles = articles;
+  // Use search results when searching, otherwise show all articles
+  const filteredArticles = isSearching && searchResults ? searchResults : articles;
 
   if (loading) {
     return (
@@ -72,6 +88,25 @@ export default function KnowledgeBasePage() {
                 </Link>
               )}
             </div>
+          </div>
+
+          {/* Search */}
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-gray-400" />
+            </div>
+            <TextInput
+              type="text"
+              placeholder="Search articles..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+            {searchLoading && (
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600"></div>
+              </div>
+            )}
           </div>
 
 
