@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { Breadcrumb, BreadcrumbItem, Button, Avatar, Textarea } from 'flowbite-react';
-import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home } from 'lucide-react';
+import { Breadcrumb, BreadcrumbItem, Button, Avatar, Textarea, Modal } from 'flowbite-react';
+import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
@@ -13,6 +13,14 @@ import { formatFullDateTime } from '../../../src/lib/utils';
 import { useAuth } from '../../../src/contexts/AuthContext';
 import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus } from '../../../src/app/shared/types';
 import { createEmptyRichText, convertLegacyContent } from '../../../src/lib/utils';
+
+interface ConflictInfo {
+  message: string;
+  currentVersion: number;
+  yourVersion: number;
+  conflictFields?: string[];
+  currentStatus?: string;
+}
 
 export default function TicketDetailPage() {
   const params = useParams();
@@ -29,6 +37,11 @@ export default function TicketDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showCloseForm, setShowCloseForm] = useState(false);
   const [closingComment, setClosingComment] = useState('');
+
+  // Conflict resolution states
+  const [showConflictModal, setShowConflictModal] = useState(false);
+  const [conflictInfo, setConflictInfo] = useState<ConflictInfo | null>(null);
+  const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
 
   const fetchTicketData = useCallback(async () => {
     if (!ticketId) return;
@@ -78,60 +91,115 @@ export default function TicketDetailPage() {
     }
   };
 
+  const handleConflictError = (error: any, retryAction: () => Promise<void>) => {
+    if (error?.response?.status === 409) {
+      const detail = error.response.data?.detail;
+      if (detail) {
+        setConflictInfo({
+          message: detail.message || 'Ticket was modified by another user.',
+          currentVersion: detail.current_version,
+          yourVersion: detail.your_version,
+          conflictFields: detail.conflict_fields,
+          currentStatus: detail.current_status
+        });
+        setPendingAction(() => retryAction);
+        setShowConflictModal(true);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const handleRefreshAndRetry = async () => {
+    setShowConflictModal(false);
+    setConflictInfo(null);
+
+    // Refresh ticket data
+    await fetchTicketData();
+
+    // Clear pending action
+    setPendingAction(null);
+  };
+
+  const handleForceUpdate = async () => {
+    setShowConflictModal(false);
+    setConflictInfo(null);
+
+    if (pendingAction) {
+      // Refresh first to get latest version, then retry
+      await fetchTicketData();
+      // Note: The retry will now use the updated version
+    }
+
+    setPendingAction(null);
+  };
+
   const handleStatusUpdate = async (newStatus: TicketStatus) => {
     if (!ticketId || !ticket) return;
 
-    try {
-      setUpdatingStatus(true);
-      await ticketsApi.updateStatus(ticketId, newStatus);
-      
-      // Update local ticket state
-      setTicket({ ...ticket, status: newStatus });
-    } catch (error) {
-      console.error('Failed to update ticket status:', error);
-    } finally {
-      setUpdatingStatus(false);
-    }
+    const performUpdate = async () => {
+      try {
+        setUpdatingStatus(true);
+        await ticketsApi.updateStatus(ticketId, newStatus);
+
+        // Update local ticket state
+        setTicket({ ...ticket, status: newStatus });
+      } catch (error: any) {
+        if (!handleConflictError(error, () => handleStatusUpdate(newStatus))) {
+          console.error('Failed to update ticket status:', error);
+        }
+      } finally {
+        setUpdatingStatus(false);
+      }
+    };
+
+    await performUpdate();
   };
 
   const handleCloseTicket = async () => {
     if (!ticketId || !ticket || !closingComment.trim()) return;
 
-    try {
-      setUpdatingStatus(true);
-      
-      // Add closing comment first
-      const commentData: CreateComment = {
-        content: {
-          html: `<p>${closingComment}</p>`,
-          json: {
-            type: 'doc',
-            content: [
-              {
-                type: 'paragraph',
-                content: [{ type: 'text', text: closingComment }]
-              }
-            ]
-          },
-          text: closingComment
+    const performClose = async () => {
+      try {
+        setUpdatingStatus(true);
+
+        // Add closing comment first
+        const commentData: CreateComment = {
+          content: {
+            html: `<p>${closingComment}</p>`,
+            json: {
+              type: 'doc',
+              content: [
+                {
+                  type: 'paragraph',
+                  content: [{ type: 'text', text: closingComment }]
+                }
+              ]
+            },
+            text: closingComment
+          }
+        };
+
+        const newCommentData = await ticketsApi.createComment(ticketId, commentData);
+        setComments([...comments, newCommentData]);
+
+        // Then close the ticket
+        await ticketsApi.updateStatus(ticketId, 'closed');
+        setTicket({ ...ticket, status: 'closed' });
+
+        // Reset form
+        setClosingComment('');
+        setShowCloseForm(false);
+      } catch (error: any) {
+        if (!handleConflictError(error, performClose)) {
+          console.error('Failed to close ticket:', error);
         }
-      };
-      
-      const newCommentData = await ticketsApi.createComment(ticketId, commentData);
-      setComments([...comments, newCommentData]);
-      
-      // Then close the ticket
-      await ticketsApi.updateStatus(ticketId, 'closed');
-      setTicket({ ...ticket, status: 'closed' });
-      
-      // Reset form
-      setClosingComment('');
-      setShowCloseForm(false);
-    } catch (error) {
-      console.error('Failed to close ticket:', error);
-    } finally {
-      setUpdatingStatus(false);
-    }
+      } finally {
+        setUpdatingStatus(false);
+      }
+    };
+
+    await performClose();
   };
 
   // Check if current user can modify this ticket (agent assigned to it)
@@ -635,6 +703,59 @@ export default function TicketDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Conflict Resolution Modal */}
+        <Modal show={showConflictModal} onClose={() => setShowConflictModal(false)}>
+          <Modal.Header>
+            <div className="flex items-center space-x-2 text-yellow-600">
+              <AlertCircle className="h-5 w-5" />
+              <span>Update Conflict Detected</span>
+            </div>
+          </Modal.Header>
+          <Modal.Body>
+            <div className="space-y-4">
+              <p className="text-gray-700 dark:text-gray-300">
+                {conflictInfo?.message}
+              </p>
+              <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Your version:</span>
+                  <span className="font-medium">{conflictInfo?.yourVersion}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Current version:</span>
+                  <span className="font-medium">{conflictInfo?.currentVersion}</span>
+                </div>
+                {conflictInfo?.currentStatus && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Current status:</span>
+                    <span className="font-medium">{conflictInfo.currentStatus}</span>
+                  </div>
+                )}
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Another user has made changes to this ticket. Please refresh to see the latest changes before making your update.
+              </p>
+            </div>
+          </Modal.Body>
+          <Modal.Footer>
+            <div className="flex justify-end space-x-3 w-full">
+              <Button
+                color="gray"
+                onClick={() => setShowConflictModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500"
+                onClick={handleRefreshAndRetry}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Refresh & Review
+              </Button>
+            </div>
+          </Modal.Footer>
+        </Modal>
       </MainLayout>
     </ProtectedRoute>
   );
