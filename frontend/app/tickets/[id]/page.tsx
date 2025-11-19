@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Breadcrumb, BreadcrumbItem, Button, Avatar, Textarea } from 'flowbite-react';
-import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home } from 'lucide-react';
+import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, Brain, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { RichTextEditor } from '../../../src/app/shared/components/RichTextEditor';
-import { ticketsApi } from '../../../src/lib/api';
+import { SentimentIndicator } from '../../../src/app/shared/components/SentimentIndicator';
+import { ticketsApi, sentimentApi } from '../../../src/lib/api';
+import type { FullTicketSentimentResponse } from '../../../src/lib/api/sentiment';
 import { formatFullDateTime } from '../../../src/lib/utils';
 import { useAuth } from '../../../src/contexts/AuthContext';
 import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus } from '../../../src/app/shared/types';
@@ -29,6 +31,10 @@ export default function TicketDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showCloseForm, setShowCloseForm] = useState(false);
   const [closingComment, setClosingComment] = useState('');
+
+  // Sentiment analysis states
+  const [sentimentData, setSentimentData] = useState<FullTicketSentimentResponse | null>(null);
+  const [loadingSentiment, setLoadingSentiment] = useState(false);
 
   const fetchTicketData = useCallback(async () => {
     if (!ticketId) return;
@@ -53,6 +59,21 @@ export default function TicketDetailPage() {
       fetchTicketData();
     }
   }, [ticketId, fetchTicketData]);
+
+  // Fetch sentiment analysis for agents
+  const fetchSentiment = useCallback(async () => {
+    if (!ticketId || user?.role !== 'agent') return;
+
+    try {
+      setLoadingSentiment(true);
+      const data = await sentimentApi.analyzeTicketFull(ticketId);
+      setSentimentData(data);
+    } catch (error) {
+      console.error('Failed to fetch sentiment:', error);
+    } finally {
+      setLoadingSentiment(false);
+    }
+  }, [ticketId, user?.role]);
 
   const handleAddComment = async () => {
     if (!ticketId || !newComment.text.trim()) return;
@@ -136,6 +157,11 @@ export default function TicketDetailPage() {
 
   // Check if current user can modify this ticket (agent assigned to it)
   const canModifyTicket = user?.role === 'agent' && ticket?.agentInfo?.id === user.id;
+
+  // Get comment sentiment by comment ID
+  const getCommentSentiment = (commentId: string) => {
+    return sentimentData?.comment_sentiments.find(cs => cs.comment_id === commentId)?.sentiment;
+  };
   
 
 
@@ -418,6 +444,16 @@ export default function TicketDetailPage() {
                               <span className="text-sm text-gray-500 dark:text-gray-400">
                                 {formatFullDateTime(comment.createdAt)}
                               </span>
+                              {user?.role === 'agent' && getCommentSentiment(comment.id) && (
+                                <SentimentIndicator
+                                  sentiment={getCommentSentiment(comment.id)!.sentiment}
+                                  score={getCommentSentiment(comment.id)!.score}
+                                  confidence={getCommentSentiment(comment.id)!.confidence}
+                                  emotions={getCommentSentiment(comment.id)!.emotions}
+                                  escalationRecommended={getCommentSentiment(comment.id)!.escalation_recommended}
+                                  size="sm"
+                                />
+                              )}
                             </div>
                             <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                               <RichTextEditor
@@ -588,6 +624,92 @@ export default function TicketDetailPage() {
                 </div>
               )}
 
+              {/* Sentiment Analysis Card - Agent Only */}
+              {user?.role === 'agent' && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center">
+                        <Brain className="h-4 w-4 mr-2" />
+                        Sentiment Analysis
+                      </h3>
+                      <Button
+                        size="xs"
+                        color="gray"
+                        onClick={fetchSentiment}
+                        disabled={loadingSentiment}
+                      >
+                        {loadingSentiment ? 'Analyzing...' : 'Analyze'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    {sentimentData ? (
+                      <div className="space-y-4">
+                        <div>
+                          <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                            TICKET SENTIMENT
+                          </dt>
+                          <SentimentIndicator
+                            sentiment={sentimentData.ticket_sentiment.sentiment}
+                            score={sentimentData.ticket_sentiment.score}
+                            confidence={sentimentData.ticket_sentiment.confidence}
+                            emotions={sentimentData.ticket_sentiment.emotions}
+                            escalationRecommended={sentimentData.ticket_sentiment.escalation_recommended}
+                            showDetails
+                          />
+                        </div>
+                        <div>
+                          <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                            OVERALL SCORE
+                          </dt>
+                          <dd className="text-lg font-semibold text-gray-900 dark:text-white">
+                            {(sentimentData.overall_trends.average_score * 100).toFixed(0)}%
+                          </dd>
+                        </div>
+                        {sentimentData.ticket_sentiment.escalation_recommended && (
+                          <div className="flex items-center p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                            <AlertTriangle className="h-4 w-4 text-yellow-500 mr-2" />
+                            <span className="text-xs text-yellow-700 dark:text-yellow-300">
+                              Escalation recommended
+                            </span>
+                          </div>
+                        )}
+                        {sentimentData.overall_trends.common_emotions.length > 0 && (
+                          <div>
+                            <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                              DETECTED EMOTIONS
+                            </dt>
+                            <div className="flex flex-wrap gap-1">
+                              {sentimentData.overall_trends.common_emotions.slice(0, 3).map((emotion) => (
+                                <span
+                                  key={emotion.emotion}
+                                  className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-700 dark:text-gray-300"
+                                >
+                                  {emotion.emotion}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div>
+                          <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                            SUMMARY
+                          </dt>
+                          <dd className="text-xs text-gray-600 dark:text-gray-400">
+                            {sentimentData.ticket_sentiment.summary}
+                          </dd>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                        Click "Analyze" to get sentiment analysis
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Ticket Info Card */}
               <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                 <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
@@ -626,7 +748,7 @@ export default function TicketDetailPage() {
                     <div>
                       <dt className="font-medium text-gray-500 dark:text-gray-400 mb-1">Category</dt>
                       <dd className="text-gray-900 dark:text-white">
-                        {ticket.category?.name} → {ticket.subCategory?.name}
+                        {ticket.category?.name} -> {ticket.subCategory?.name}
                       </dd>
                     </div>
                   </div>

@@ -59,4 +59,13 @@ export const API_ENDPOINTS = {
     SEARCH: '/articles/search',
     GENERATE_TAGS: (id: string) => `/articles/${id}/generate-tags`,
   },
+
+  // Sentiment Analysis
+  SENTIMENT: {
+    TICKET: (ticketId: string) => `/sentiment/ticket/${ticketId}`,
+    TICKET_FULL: (ticketId: string) => `/sentiment/ticket/${ticketId}/full`,
+    TICKET_ESCALATION: (ticketId: string) => `/sentiment/ticket/${ticketId}/escalation`,
+    COMMENT: (commentId: string) => `/sentiment/comment/${commentId}`,
+    ANALYTICS: '/sentiment/analytics',
+  },
 } as const;
