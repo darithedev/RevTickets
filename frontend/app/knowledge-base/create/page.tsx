@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Card, Label, TextInput, Select } from 'flowbite-react';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Sparkles } from 'lucide-react';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { RichTextEditor } from '../../../src/app/shared/components/RichTextEditor';
@@ -17,13 +17,16 @@ export default function CreateArticlePage() {
   const { } = useAuth();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  
+  const [generatingTags, setGeneratingTags] = useState(false);
+  const [createdArticleId, setCreatedArticleId] = useState<string | null>(null);
+  const [aiGeneratedTags, setAiGeneratedTags] = useState<string[]>([]);
+
   // Form state
   const [title, setTitle] = useState('');
   const [content, setContent] = useState<RichTextContent>(createEmptyRichText());
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState('');
-  
+
   // Data state
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<SubCategory[]>([]);
@@ -66,7 +69,7 @@ export default function CreateArticlePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!title.trim() || !content.text.trim() || !selectedCategoryId || !selectedSubcategoryId) {
       alert('Please fill in all required fields');
       return;
@@ -74,7 +77,7 @@ export default function CreateArticlePage() {
 
     try {
       setSubmitting(true);
-      
+
       const articleData: CreateArticle = {
         title: title.trim(),
         content,
@@ -83,9 +86,9 @@ export default function CreateArticlePage() {
       };
 
       const newArticle = await articlesApi.create(articleData);
-      
-      // Redirect to the new article
-      router.push(`/knowledge-base/${newArticle.id}`);
+
+      // Store the created article ID for tag generation
+      setCreatedArticleId(newArticle.id);
     } catch (error) {
       console.error('Failed to create article:', error);
       alert('Failed to create article. Please try again.');
@@ -98,11 +101,103 @@ export default function CreateArticlePage() {
     router.back();
   };
 
+  const handleGenerateTags = async () => {
+    if (!createdArticleId) return;
+
+    try {
+      setGeneratingTags(true);
+      const response = await articlesApi.generateTags(createdArticleId);
+      setAiGeneratedTags(response.tags);
+    } catch (error) {
+      console.error('Failed to generate tags:', error);
+      alert('Failed to generate tags. Please try again.');
+    } finally {
+      setGeneratingTags(false);
+    }
+  };
+
+  const handleViewArticle = () => {
+    if (createdArticleId) {
+      router.push(`/knowledge-base/${createdArticleId}`);
+    }
+  };
+
   if (loading) {
     return (
       <ProtectedRoute requiredRole="agent">
         <MainLayout>
           <LoadingSpinner text="Loading categories..." />
+        </MainLayout>
+      </ProtectedRoute>
+    );
+  }
+
+  // Show success state after article creation
+  if (createdArticleId) {
+    return (
+      <ProtectedRoute requiredRole="agent">
+        <MainLayout>
+          <div className="space-y-6">
+            <Card className="max-w-2xl mx-auto">
+              <div className="text-center space-y-4">
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto">
+                  <Save className="h-8 w-8 text-green-600 dark:text-green-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Article Created Successfully!
+                </h2>
+                <p className="text-gray-500 dark:text-gray-400">
+                  Your article has been created. You can now generate AI-powered tags to improve discoverability.
+                </p>
+
+                {/* AI Generated Tags Display */}
+                {aiGeneratedTags.length > 0 && (
+                  <div className="mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                    <p className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2">
+                      AI Generated Tags:
+                    </p>
+                    <div className="flex flex-wrap gap-2 justify-center">
+                      {aiGeneratedTags.map((tag, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100"
+                        >
+                          <Sparkles className="h-3 w-3 mr-1" />
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-center space-x-3 pt-4">
+                  <Button
+                    onClick={handleGenerateTags}
+                    color="purple"
+                    disabled={generatingTags}
+                  >
+                    {generatingTags ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        {aiGeneratedTags.length > 0 ? 'Regenerate Tags' : 'Generate Tags'}
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleViewArticle}
+                    className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500"
+                  >
+                    View Article
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
         </MainLayout>
       </ProtectedRoute>
     );

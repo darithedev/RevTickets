@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button, Breadcrumb, BreadcrumbItem } from 'flowbite-react';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, BookOpen, Tag } from 'lucide-react';
+import { ArrowLeft, Calendar, BookOpen, Tag, Edit, Sparkles } from 'lucide-react';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { articlesApi } from '../../../src/lib/api';
@@ -15,11 +15,13 @@ import type { Article } from '../../../src/app/shared/types';
 export default function ArticleDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { } = useAuth();
+  const { user } = useAuth();
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [generatingTags, setGeneratingTags] = useState(false);
 
+  const isAgent = user?.role === 'agent';
   const articleId = params.id as string;
 
   useEffect(() => {
@@ -44,6 +46,27 @@ export default function ArticleDetailPage() {
 
   const handleBack = () => {
     router.back();
+  };
+
+  const handleGenerateTags = async () => {
+    if (!articleId) return;
+
+    try {
+      setGeneratingTags(true);
+      const response = await articlesApi.generateTags(articleId);
+      // Update the article with new tags
+      if (article) {
+        setArticle({
+          ...article,
+          aiGeneratedTags: response.tags
+        });
+      }
+    } catch (error) {
+      console.error('Failed to generate tags:', error);
+      alert('Failed to generate tags. Please try again.');
+    } finally {
+      setGeneratingTags(false);
+    }
   };
 
   if (loading) {
@@ -82,16 +105,28 @@ export default function ArticleDetailPage() {
     <ProtectedRoute>
       <MainLayout>
         <div className="container mx-auto px-4 py-8 space-y-6">
-          {/* Breadcrumbs */}
-          <Breadcrumb className="mb-4">
-            <BreadcrumbItem>
-              <Link href="/knowledge-base" className="flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                <BookOpen className="h-4 w-4 mr-2" />
-                Knowledge Base
+          {/* Header with Breadcrumbs and Edit Button */}
+          <div className="flex items-center justify-between mb-4">
+            <Breadcrumb>
+              <BreadcrumbItem>
+                <Link href="/knowledge-base" className="flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                  <BookOpen className="h-4 w-4 mr-2" />
+                  Knowledge Base
+                </Link>
+              </BreadcrumbItem>
+              <BreadcrumbItem>{article.title}</BreadcrumbItem>
+            </Breadcrumb>
+
+            {/* Edit Button - visible to agents only */}
+            {isAgent && (
+              <Link href={`/knowledge-base/${articleId}/edit`}>
+                <Button className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500">
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Article
+                </Button>
               </Link>
-            </BreadcrumbItem>
-            <BreadcrumbItem>{article.title}</BreadcrumbItem>
-          </Breadcrumb>
+            )}
+          </div>
 
 
           {/* Article Layout */}
@@ -102,13 +137,13 @@ export default function ArticleDetailPage() {
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4 leading-tight">
                   {article.title}
                 </h1>
-                
+
                 {/* Article Meta */}
                 <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-600 dark:text-gray-400">
                   <div className="flex items-center space-x-2">
                     <Tag className="h-4 w-4" />
                     <span className="font-medium">{article.category?.name}</span>
-                    <span className="text-gray-400">→</span>
+                    <span className="text-gray-400">-&gt;</span>
                     <span>{article.subCategory?.name}</span>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -122,6 +157,57 @@ export default function ArticleDetailPage() {
                     </div>
                   )}
                 </div>
+
+                {/* AI Generated Tags Section */}
+                {(article.aiGeneratedTags && article.aiGeneratedTags.length > 0) || isAgent ? (
+                  <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-center gap-2 mb-3">
+                      <Sparkles className="h-4 w-4 text-purple-500" />
+                      <span className="text-sm font-medium text-purple-600 dark:text-purple-400">
+                        AI Generated Tags
+                      </span>
+                    </div>
+                    {article.aiGeneratedTags && article.aiGeneratedTags.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 justify-center">
+                        {article.aiGeneratedTags.map((tag, index) => (
+                          <span
+                            key={index}
+                            className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100 border border-purple-200 dark:border-purple-700"
+                          >
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+                        No AI tags generated yet.
+                      </p>
+                    )}
+                    {isAgent && (
+                      <div className="mt-4 text-center">
+                        <Button
+                          onClick={handleGenerateTags}
+                          color="purple"
+                          size="sm"
+                          disabled={generatingTags}
+                        >
+                          {generatingTags ? (
+                            <>
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
+                              Generating...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-3 w-3 mr-2" />
+                              {article.aiGeneratedTags && article.aiGeneratedTags.length > 0 ? 'Regenerate Tags' : 'Generate Tags'}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -129,12 +215,12 @@ export default function ArticleDetailPage() {
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
               <div className="p-8">
                 <div className="prose prose-lg prose-gray dark:prose-invert max-w-none">
-                  <div 
+                  <div
                     className="text-base leading-relaxed"
-                    dangerouslySetInnerHTML={{ 
-                      __html: typeof article.content === 'string' 
-                        ? article.content 
-                        : article.content?.html || '' 
+                    dangerouslySetInnerHTML={{
+                      __html: typeof article.content === 'string'
+                        ? article.content
+                        : article.content?.html || ''
                     }}
                   />
                 </div>
