@@ -9,7 +9,7 @@ import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { RichTextEditor } from '../../../src/app/shared/components/RichTextEditor';
 import { ticketsApi } from '../../../src/lib/api';
-import { formatFullDateTime } from '../../../src/lib/utils';
+import { formatFullDateTime, canEditComment, getEditTimeRemaining } from '../../../src/lib/utils';
 import { useAuth } from '../../../src/contexts/AuthContext';
 import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus } from '../../../src/app/shared/types';
 import { createEmptyRichText, convertLegacyContent } from '../../../src/lib/utils';
@@ -29,6 +29,11 @@ export default function TicketDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showCloseForm, setShowCloseForm] = useState(false);
   const [closingComment, setClosingComment] = useState('');
+
+  // Comment editing states
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editCommentContent, setEditCommentContent] = useState<RichTextContent>(createEmptyRichText());
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchTicketData = useCallback(async () => {
     if (!ticketId) return;
@@ -131,6 +136,41 @@ export default function TicketDetailPage() {
       console.error('Failed to close ticket:', error);
     } finally {
       setUpdatingStatus(false);
+    }
+  };
+
+  // Comment editing handlers
+  const handleStartEdit = (comment: Comment) => {
+    setEditingCommentId(comment.id);
+    setEditCommentContent(convertLegacyContent(comment.content));
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCommentId(null);
+    setEditCommentContent(createEmptyRichText());
+  };
+
+  const handleSaveEdit = async (commentId: string) => {
+    if (!editCommentContent.text.trim()) return;
+
+    try {
+      setSavingEdit(true);
+      const updatedComment = await ticketsApi.updateComment(commentId, {
+        content: editCommentContent
+      });
+
+      // Update the comment in local state
+      setComments(comments.map(c =>
+        c.id === commentId
+          ? { ...c, content: updatedComment.content, edited: true, editCount: (c.editCount || 0) + 1 }
+          : c
+      ));
+
+      handleCancelEdit();
+    } catch (error) {
+      console.error('Failed to update comment:', error);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -393,42 +433,96 @@ export default function TicketDetailPage() {
                         <p className="text-sm">Be the first to add a comment!</p>
                       </div>
                     ) : (
-                      comments.map((comment) => (
-                        <div key={comment.id} className="flex space-x-4 pb-6 border-b border-gray-100 dark:border-gray-700 last:border-b-0 last:pb-0">
-                          <Avatar
-                            img=""
-                            alt={comment.user.name || comment.user.email}
-                            size="md"
-                            className="flex-shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center space-x-2 mb-3">
-                              <span className="font-semibold text-gray-900 dark:text-white">
-                                {comment.user.name || comment.user.email}
-                              </span>
-                              {comment.user.role && (
-                                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                  comment.user.role === 'agent' 
-                                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' 
-                                    : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                                }`}>
-                                  {comment.user.role === 'agent' ? 'Agent' : 'Customer'}
-                                </span>
+                      comments.map((comment) => {
+                        const isEditing = editingCommentId === comment.id;
+                        const canEdit = user?.id === comment.user.id && canEditComment(comment.createdAt);
+
+                        return (
+                          <div key={comment.id} className="flex space-x-4 pb-6 border-b border-gray-100 dark:border-gray-700 last:border-b-0 last:pb-0">
+                            <Avatar
+                              img=""
+                              alt={comment.user.name || comment.user.email}
+                              size="md"
+                              className="flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-semibold text-gray-900 dark:text-white">
+                                    {comment.user.name || comment.user.email}
+                                  </span>
+                                  {comment.user.role && (
+                                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                      comment.user.role === 'agent'
+                                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                                        : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                                    }`}>
+                                      {comment.user.role === 'agent' ? 'Agent' : 'Customer'}
+                                    </span>
+                                  )}
+                                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                                    {formatFullDateTime(comment.createdAt)}
+                                  </span>
+                                  {comment.edited && (
+                                    <span className="text-xs text-gray-400 dark:text-gray-500 italic">
+                                      (edited{comment.editCount && comment.editCount > 1 ? ` ${comment.editCount}x` : ''})
+                                    </span>
+                                  )}
+                                </div>
+                                {canEdit && !isEditing && (
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-xs text-gray-400" title="Time remaining to edit">
+                                      {getEditTimeRemaining(comment.createdAt)}
+                                    </span>
+                                    <button
+                                      onClick={() => handleStartEdit(comment)}
+                                      className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                                      title="Edit comment"
+                                    >
+                                      <Edit3 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                              {isEditing ? (
+                                <div className="space-y-3">
+                                  <RichTextEditor
+                                    content={editCommentContent}
+                                    onChange={setEditCommentContent}
+                                    className="min-h-[100px] border-2 border-blue-200 dark:border-blue-600 rounded-lg"
+                                  />
+                                  <div className="flex justify-end space-x-2">
+                                    <Button
+                                      size="sm"
+                                      color="gray"
+                                      onClick={handleCancelEdit}
+                                      disabled={savingEdit}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      className="bg-blue-600 hover:bg-blue-700"
+                                      onClick={() => handleSaveEdit(comment.id)}
+                                      disabled={!editCommentContent.text.trim() || savingEdit}
+                                    >
+                                      {savingEdit ? 'Saving...' : 'Save'}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                                  <RichTextEditor
+                                    content={convertLegacyContent(comment.content)}
+                                    editable={false}
+                                    className="border-none bg-transparent"
+                                  />
+                                </div>
                               )}
-                              <span className="text-sm text-gray-500 dark:text-gray-400">
-                                {formatFullDateTime(comment.createdAt)}
-                              </span>
-                            </div>
-                            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
-                              <RichTextEditor
-                                content={convertLegacyContent(comment.content)}
-                                editable={false}
-                                className="border-none bg-transparent"
-                              />
                             </div>
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
 
