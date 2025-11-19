@@ -3,15 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Breadcrumb, BreadcrumbItem, Button, Avatar, Textarea } from 'flowbite-react';
-import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home } from 'lucide-react';
+import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, ArrowUpCircle, Clock } from 'lucide-react';
 import Link from 'next/link';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { RichTextEditor } from '../../../src/app/shared/components/RichTextEditor';
-import { ticketsApi } from '../../../src/lib/api';
+import { ticketsApi, escalationsApi } from '../../../src/lib/api';
 import { formatFullDateTime } from '../../../src/lib/utils';
 import { useAuth } from '../../../src/contexts/AuthContext';
-import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus } from '../../../src/app/shared/types';
+import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus, EscalationHistoryItem } from '../../../src/app/shared/types';
 import { createEmptyRichText, convertLegacyContent } from '../../../src/lib/utils';
 
 export default function TicketDetailPage() {
@@ -21,6 +21,7 @@ export default function TicketDetailPage() {
 
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [escalationHistory, setEscalationHistory] = useState<EscalationHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState<RichTextContent>(createEmptyRichText());
   const [submittingComment, setSubmittingComment] = useState(false);
@@ -35,12 +36,14 @@ export default function TicketDetailPage() {
 
     try {
       setLoading(true);
-      const [ticketData, commentsData] = await Promise.all([
+      const [ticketData, commentsData, escalationData] = await Promise.all([
         ticketsApi.getById(ticketId),
         ticketsApi.getComments(ticketId),
+        escalationsApi.getTicketHistory(ticketId).catch(() => []),
       ]);
       setTicket(ticketData);
       setComments(commentsData);
+      setEscalationHistory(escalationData);
     } catch (error) {
       console.error('Failed to fetch ticket data:', error);
     } finally {
@@ -632,6 +635,55 @@ export default function TicketDetailPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Escalation History Card */}
+              {escalationHistory.length > 0 && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+                    <div className="flex items-center space-x-2">
+                      <ArrowUpCircle className="h-4 w-4 text-orange-500" />
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                        Escalation History
+                      </h3>
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <div className="space-y-4">
+                      {escalationHistory.map((item) => (
+                        <div key={item.id} className="border-l-2 border-orange-300 pl-3">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <span className="text-xs font-medium text-orange-600 dark:text-orange-400 uppercase">
+                              {item.escalation_level.replace('_', ' ')}
+                            </span>
+                            {item.is_automatic && (
+                              <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded">
+                                Auto
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                            {item.reason}
+                          </p>
+                          {item.new_agent && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Assigned to: {item.new_agent.name}
+                            </p>
+                          )}
+                          {item.new_priority && item.previous_priority && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              Priority: {item.previous_priority} → {item.new_priority}
+                            </p>
+                          )}
+                          <div className="flex items-center mt-1 text-xs text-gray-400">
+                            <Clock className="h-3 w-3 mr-1" />
+                            {formatFullDateTime(item.escalated_at)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
