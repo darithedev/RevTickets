@@ -1,9 +1,10 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from '../../constants';
-import type { 
-  Article, 
-  CreateArticle, 
-  UpdateArticle
+import type {
+  Article,
+  CreateArticle,
+  UpdateArticle,
+  GenerateTagsResponse
 } from '../../app/shared/types';
 
 export const articlesApi = {
@@ -41,5 +42,9 @@ export const articlesApi = {
     subcategoryId?: string;
   }): Promise<Article[]> {
     return apiClient.get(API_ENDPOINTS.ARTICLES.SEARCH, { params });
+  },
+
+  async generateTags(id: string): Promise<GenerateTagsResponse> {
+    return apiClient.post(API_ENDPOINTS.ARTICLES.GENERATE_TAGS(id));
   },
 };

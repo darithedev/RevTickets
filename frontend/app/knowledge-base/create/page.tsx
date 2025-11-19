@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Card, Label, TextInput, Select } from 'flowbite-react';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Sparkles } from 'lucide-react';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { RichTextEditor } from '../../../src/app/shared/components/RichTextEditor';
@@ -17,7 +17,10 @@ export default function CreateArticlePage() {
   const { } = useAuth();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  
+  const [generatingTags, setGeneratingTags] = useState(false);
+  const [createdArticleId, setCreatedArticleId] = useState<string | null>(null);
+  const [aiGeneratedTags, setAiGeneratedTags] = useState<string[]>([]);
+
   // Form state
   const [title, setTitle] = useState('');
   const [content, setContent] = useState<RichTextContent>(createEmptyRichText());
@@ -83,9 +86,9 @@ export default function CreateArticlePage() {
       };
 
       const newArticle = await articlesApi.create(articleData);
-      
-      // Redirect to the new article
-      router.push(`/knowledge-base/${newArticle.id}`);
+
+      // Store the created article ID for tag generation
+      setCreatedArticleId(newArticle.id);
     } catch (error) {
       console.error('Failed to create article:', error);
       alert('Failed to create article. Please try again.');
@@ -96,6 +99,27 @@ export default function CreateArticlePage() {
 
   const handleBack = () => {
     router.back();
+  };
+
+  const handleGenerateTags = async () => {
+    if (!createdArticleId) return;
+
+    try {
+      setGeneratingTags(true);
+      const response = await articlesApi.generateTags(createdArticleId);
+      setAiGeneratedTags(response.tags);
+    } catch (error) {
+      console.error('Failed to generate tags:', error);
+      alert('Failed to generate tags. Please try again.');
+    } finally {
+      setGeneratingTags(false);
+    }
+  };
+
+  const handleViewArticle = () => {
+    if (createdArticleId) {
+      router.push(`/knowledge-base/${createdArticleId}`);
+    }
   };
 
   if (loading) {
