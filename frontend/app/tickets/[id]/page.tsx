@@ -3,12 +3,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Breadcrumb, BreadcrumbItem, Button, Avatar, Textarea } from 'flowbite-react';
-import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home } from 'lucide-react';
+import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, Brain, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { RichTextEditor } from '../../../src/app/shared/components/RichTextEditor';
-import { ticketsApi } from '../../../src/lib/api';
+import { SentimentIndicator } from '../../../src/app/shared/components/SentimentIndicator';
+import { ticketsApi, sentimentApi } from '../../../src/lib/api';
+import type { FullTicketSentimentResponse } from '../../../src/lib/api/sentiment';
 import { formatFullDateTime } from '../../../src/lib/utils';
 import { useAuth } from '../../../src/contexts/AuthContext';
 import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus } from '../../../src/app/shared/types';
@@ -29,6 +31,10 @@ export default function TicketDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showCloseForm, setShowCloseForm] = useState(false);
   const [closingComment, setClosingComment] = useState('');
+
+  // Sentiment analysis states
+  const [sentimentData, setSentimentData] = useState<FullTicketSentimentResponse | null>(null);
+  const [loadingSentiment, setLoadingSentiment] = useState(false);
 
   const fetchTicketData = useCallback(async () => {
     if (!ticketId) return;
@@ -53,6 +59,21 @@ export default function TicketDetailPage() {
       fetchTicketData();
     }
   }, [ticketId, fetchTicketData]);
+
+  // Fetch sentiment analysis for agents
+  const fetchSentiment = useCallback(async () => {
+    if (!ticketId || user?.role !== 'agent') return;
+
+    try {
+      setLoadingSentiment(true);
+      const data = await sentimentApi.analyzeTicketFull(ticketId);
+      setSentimentData(data);
+    } catch (error) {
+      console.error('Failed to fetch sentiment:', error);
+    } finally {
+      setLoadingSentiment(false);
+    }
+  }, [ticketId, user?.role]);
 
   const handleAddComment = async () => {
     if (!ticketId || !newComment.text.trim()) return;
@@ -136,6 +157,11 @@ export default function TicketDetailPage() {
 
   // Check if current user can modify this ticket (agent assigned to it)
   const canModifyTicket = user?.role === 'agent' && ticket?.agentInfo?.id === user.id;
+
+  // Get comment sentiment by comment ID
+  const getCommentSentiment = (commentId: string) => {
+    return sentimentData?.comment_sentiments.find(cs => cs.comment_id === commentId)?.sentiment;
+  };
   
 
 
@@ -418,6 +444,17 @@ export default function TicketDetailPage() {
                               <span className="text-sm text-gray-500 dark:text-gray-400">
                                 {formatFullDateTime(comment.createdAt)}
                               </span>
+                              {/* Sentiment indicator for agents */}
+                              {user?.role === 'agent' && getCommentSentiment(comment.id) && (
+                                <SentimentIndicator
+                                  sentiment={getCommentSentiment(comment.id)!.sentiment}
+                                  score={getCommentSentiment(comment.id)!.score}
+                                  confidence={getCommentSentiment(comment.id)!.confidence}
+                                  emotions={getCommentSentiment(comment.id)!.emotions}
+                                  escalationRecommended={getCommentSentiment(comment.id)!.escalation_recommended}
+                                  size="sm"
+                                />
+                              )}
                             </div>
                             <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                               <RichTextEditor
