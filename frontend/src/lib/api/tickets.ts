@@ -1,15 +1,16 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from '../../constants';
-import type { 
-  Ticket, 
-  CreateTicket, 
-  UpdateTicket, 
-  TicketAssignment, 
-  TicketClosure, 
+import type {
+  Ticket,
+  CreateTicket,
+  UpdateTicket,
+  TicketAssignment,
+  TicketClosure,
   TicketStats,
   Comment,
   CreateComment,
-  UpdateComment
+  UpdateComment,
+  ClosingCommentsResponse
 } from '../../app/shared/types';
 
 export const ticketsApi = {
@@ -100,5 +101,9 @@ export const ticketsApi = {
 
   async deleteComment(id: string): Promise<void> {
     return apiClient.delete(API_ENDPOINTS.COMMENTS.BY_ID(id));
+  },
+
+  async generateClosingComments(ticketId: string): Promise<ClosingCommentsResponse> {
+    return apiClient.post(`/tickets/${ticketId}/closing_comments`);
   },
 };

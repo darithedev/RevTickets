@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Breadcrumb, BreadcrumbItem, Button, Avatar, Textarea } from 'flowbite-react';
-import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, RotateCcw } from 'lucide-react';
+import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, RotateCcw, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
@@ -11,7 +11,7 @@ import { RichTextEditor } from '../../../src/app/shared/components/RichTextEdito
 import { ticketsApi } from '../../../src/lib/api';
 import { formatFullDateTime, canEditComment, getEditTimeRemaining, canReopenTicket, getReopenTimeRemaining } from '../../../src/lib/utils';
 import { useAuth } from '../../../src/contexts/AuthContext';
-import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus } from '../../../src/app/shared/types';
+import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus, ClosingCommentsResponse } from '../../../src/app/shared/types';
 import { createEmptyRichText, convertLegacyContent } from '../../../src/lib/utils';
 
 export default function TicketDetailPage() {
@@ -39,6 +39,10 @@ export default function TicketDetailPage() {
   const [showReopenForm, setShowReopenForm] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const [reopening, setReopening] = useState(false);
+
+  // AI closing suggestions states
+  const [closingSuggestion, setClosingSuggestion] = useState<ClosingCommentsResponse | null>(null);
+  const [generatingSuggestion, setGeneratingSuggestion] = useState(false);
 
   const fetchTicketData = useCallback(async () => {
     if (!ticketId) return;
@@ -193,6 +197,27 @@ export default function TicketDetailPage() {
       console.error('Failed to reopen ticket:', error);
     } finally {
       setReopening(false);
+    }
+  };
+
+  // AI closing suggestion handlers
+  const handleGenerateClosingSuggestion = async () => {
+    if (!ticketId) return;
+
+    try {
+      setGeneratingSuggestion(true);
+      const suggestion = await ticketsApi.generateClosingComments(ticketId);
+      setClosingSuggestion(suggestion);
+    } catch (error) {
+      console.error('Failed to generate closing suggestion:', error);
+    } finally {
+      setGeneratingSuggestion(false);
+    }
+  };
+
+  const handleApplySuggestion = () => {
+    if (closingSuggestion) {
+      setClosingComment(closingSuggestion.comment);
     }
   };
 
@@ -733,6 +758,48 @@ export default function TicketDetailPage() {
                   {/* Close Ticket Form */}
                   {showCloseForm && (
                     <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+                      {/* AI Closing Suggestions Section */}
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            AI Suggestions
+                          </span>
+                          <Button
+                            size="xs"
+                            className="bg-purple-600 hover:bg-purple-700 focus:ring-purple-500"
+                            onClick={handleGenerateClosingSuggestion}
+                            disabled={generatingSuggestion}
+                          >
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            {generatingSuggestion ? 'Generating...' : 'Generate'}
+                          </Button>
+                        </div>
+
+                        {closingSuggestion && (
+                          <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 mb-3 border border-purple-200 dark:border-purple-800">
+                            <div className="mb-2">
+                              <span className="text-xs font-medium text-purple-700 dark:text-purple-300">Reason:</span>
+                              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
+                                {closingSuggestion.reason}
+                              </p>
+                            </div>
+                            <div className="mb-3">
+                              <span className="text-xs font-medium text-purple-700 dark:text-purple-300">Suggested Comment:</span>
+                              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
+                                {closingSuggestion.comment}
+                              </p>
+                            </div>
+                            <Button
+                              size="xs"
+                              className="w-full bg-purple-600 hover:bg-purple-700 focus:ring-purple-500"
+                              onClick={handleApplySuggestion}
+                            >
+                              Apply Suggestion
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Closing Comment <span className="text-red-500">*</span>
                       </label>
@@ -760,6 +827,7 @@ export default function TicketDetailPage() {
                           onClick={() => {
                             setShowCloseForm(false);
                             setClosingComment('');
+                            setClosingSuggestion(null);
                           }}
                           disabled={updatingStatus}
                         >

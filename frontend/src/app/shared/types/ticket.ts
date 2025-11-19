@@ -105,3 +105,8 @@ export interface TicketAssignment {
 export interface TicketClosure {
   resolution: string;
 }
+
+export interface ClosingCommentsResponse {
+  reason: string;
+  comment: string;
+}
