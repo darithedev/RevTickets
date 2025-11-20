@@ -1,54 +1,117 @@
-import { useState, useEffect } from 'react';
+'use client';
 
-export function useDebounceSearch<T>(
-  searchFn: (query: string) => Promise<T>,
-  delay: number = 300
-) {
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+interface UseDebounceSearchOptions<T> {
+  searchFn: (query: string) => Promise<T[]>;
+  delay?: number;
+  minLength?: number;
+}
+
+interface UseDebounceSearchResult<T> {
+  query: string;
+  setQuery: (query: string) => void;
+  results: T[];
+  isSearching: boolean;
+  error: string | null;
+  clearSearch: () => void;
+}
+
+export function useDebounceSearch<T>({
+  searchFn,
+  delay = 300,
+  minLength = 1,
+}: UseDebounceSearchOptions<T>): UseDebounceSearchResult<T> {
   const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [results, setResults] = useState<T | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+  const [results, setResults] = useState<T[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Debounce the query
+  const clearSearch = useCallback(() => {
+    setQuery('');
+    setResults([]);
+    setError(null);
+    setIsSearching(false);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query);
-    }, delay);
+    // Clear previous timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
 
-    return () => clearTimeout(timer);
-  }, [query, delay]);
+    // Cancel previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
 
-  // Perform search when debounced query changes
-  useEffect(() => {
-    const performSearch = async () => {
-      if (!debouncedQuery.trim()) {
-        setResults(null);
-        return;
-      }
+    // If query is too short, clear results
+    if (query.length < minLength) {
+      setResults([]);
+      setIsSearching(false);
+      setError(null);
+      return;
+    }
+
+    setIsSearching(true);
+    setError(null);
+
+    // Set up debounced search
+    timeoutRef.current = setTimeout(async () => {
+      abortControllerRef.current = new AbortController();
 
       try {
-        setLoading(true);
-        setError(null);
-        const searchResults = await searchFn(debouncedQuery);
+        const searchResults = await searchFn(query);
         setResults(searchResults);
+        setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err : new Error('Search failed'));
-        setResults(null);
+        if (err instanceof Error && err.name === 'AbortError') {
+          // Request was aborted, ignore
+          return;
+        }
+        setError(err instanceof Error ? err.message : 'Search failed');
+        setResults([]);
       } finally {
-        setLoading(false);
+        setIsSearching(false);
+      }
+    }, delay);
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
       }
     };
+  }, [query, searchFn, delay, minLength]);
 
-    performSearch();
-  }, [debouncedQuery, searchFn]);
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   return {
     query,
     setQuery,
     results,
-    loading,
+    isSearching,
     error,
-    isSearching: query.trim().length > 0,
+    clearSearch,
   };
 }
