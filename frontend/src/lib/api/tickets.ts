@@ -82,6 +82,10 @@ export const ticketsApi = {
     return apiClient.patch(`/tickets/${ticketId}/status`, { status });
   },
 
+  async reopenTicket(ticketId: string, reason?: string): Promise<Ticket> {
+    return apiClient.post(`/tickets/${ticketId}/reopen`, { reason });
+  },
+
   async getComments(ticketId: string): Promise<Comment[]> {
     return apiClient.get(API_ENDPOINTS.TICKETS.COMMENTS(ticketId));
   },
