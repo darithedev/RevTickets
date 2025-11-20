@@ -1,6 +1,5 @@
 /**
- * Custom hook for WebSocket connections with proper JWT authentication.
- * Ensures all WebSocket connections are properly authenticated to prevent bypass attacks.
+ * Custom hook for WebSocket connections with proper cleanup to prevent memory leaks.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
@@ -8,8 +7,8 @@ import { useAuth } from '../../contexts/AuthContext';
 
 interface WebSocketMessage {
   type: string;
+  ticket_id?: string;
   data?: any;
-  error?: string;
 }
 
 interface UseWebSocketOptions {
@@ -18,59 +17,57 @@ interface UseWebSocketOptions {
   reconnectInterval?: number;
   onMessage?: (message: WebSocketMessage) => void;
   onConnect?: () => void;
-  onDisconnect?: (code: number, reason: string) => void;
+  onDisconnect?: () => void;
   onError?: (error: Event) => void;
-  onAuthError?: (reason: string) => void;
 }
 
 interface UseWebSocketReturn {
   isConnected: boolean;
-  isAuthenticated: boolean;
   lastMessage: WebSocketMessage | null;
   sendMessage: (message: object) => void;
-  connectionError: string | null;
+  subscribe: (ticketId: string) => void;
+  unsubscribe: (ticketId: string) => void;
 }
-
-// WebSocket close codes for authentication errors
-const AUTH_ERROR_CODE = 4001;
-const TOKEN_EXPIRED_CODE = 4002;
 
 export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketReturn {
   const {
     url = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000/ws',
-    reconnectAttempts = 3,
-    reconnectInterval = 5000,
+    reconnectAttempts = 5,
+    reconnectInterval = 3000,
     onMessage,
     onConnect,
     onDisconnect,
     onError,
-    onAuthError,
   } = options;
 
-  const { user, token, logout } = useAuth();
+  const { user, token } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectCountRef = useRef(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const tokenRef = useRef<string | null>(null);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const messageQueueRef = useRef<object[]>([]);
+  const subscriptionsRef = useRef<Set<string>>(new Set());
 
   const [isConnected, setIsConnected] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
 
-  // Update token ref when token changes
-  useEffect(() => {
-    tokenRef.current = token;
-  }, [token]);
-
-  // Cleanup function
+  // Cleanup function to properly close WebSocket and clear all intervals/timeouts
   const cleanup = useCallback(() => {
+    // Clear reconnect timeout
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
 
+    // Clear ping interval
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+
+    // Close WebSocket connection
     if (wsRef.current) {
+      // Remove event listeners before closing to prevent memory leaks
       wsRef.current.onopen = null;
       wsRef.current.onclose = null;
       wsRef.current.onerror = null;
@@ -78,82 +75,87 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
 
       if (wsRef.current.readyState === WebSocket.OPEN ||
           wsRef.current.readyState === WebSocket.CONNECTING) {
-        wsRef.current.close(1000, 'Cleanup');
+        wsRef.current.close(1000, 'Component unmounting');
       }
       wsRef.current = null;
     }
 
+    // Clear message queue
+    messageQueueRef.current = [];
+
+    // Clear subscriptions
+    subscriptionsRef.current.clear();
+
     setIsConnected(false);
-    setIsAuthenticated(false);
   }, []);
 
-  // Connect to WebSocket with JWT token
+  // Connect to WebSocket
   const connect = useCallback(() => {
-    // Don't connect if no user or token
     if (!user || !token) {
-      setConnectionError('Authentication required');
       return;
     }
 
-    // Clean up existing connection
+    // Clean up any existing connection first
     cleanup();
-    setConnectionError(null);
 
     try {
-      // IMPORTANT: Pass JWT token as query parameter for authentication
-      // The server MUST validate this token before accepting the connection
+      // Append token to URL for authentication
       const wsUrl = `${url}?token=${encodeURIComponent(token)}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
         setIsConnected(true);
-        setIsAuthenticated(true);
         reconnectCountRef.current = 0;
-        setConnectionError(null);
+
+        // Process queued messages
+        while (messageQueueRef.current.length > 0) {
+          const message = messageQueueRef.current.shift();
+          if (message) {
+            ws.send(JSON.stringify(message));
+          }
+        }
+
+        // Re-subscribe to any previous subscriptions
+        subscriptionsRef.current.forEach(ticketId => {
+          ws.send(JSON.stringify({
+            type: 'subscribe',
+            ticket_id: ticketId
+          }));
+        });
+
+        // Start ping interval for connection health
+        pingIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'pong' }));
+          }
+        }, 30000);
+
         onConnect?.();
       };
 
       ws.onclose = (event) => {
         setIsConnected(false);
-        setIsAuthenticated(false);
 
-        // Handle authentication-specific close codes
-        if (event.code === AUTH_ERROR_CODE || event.code === TOKEN_EXPIRED_CODE) {
-          const reason = event.reason || 'Authentication failed';
-          setConnectionError(reason);
-          onAuthError?.(reason);
-
-          // If token expired, trigger logout
-          if (event.code === TOKEN_EXPIRED_CODE) {
-            logout?.();
-          }
-
-          // Don't reconnect on auth errors
-          return;
+        // Clear ping interval
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
+          pingIntervalRef.current = null;
         }
 
-        onDisconnect?.(event.code, event.reason);
+        onDisconnect?.();
 
-        // Attempt to reconnect if not a clean close and we have a valid token
-        if (event.code !== 1000 &&
-            reconnectCountRef.current < reconnectAttempts &&
-            tokenRef.current) {
+        // Attempt to reconnect if not a clean close
+        if (event.code !== 1000 && reconnectCountRef.current < reconnectAttempts) {
           reconnectCountRef.current++;
-          const delay = reconnectInterval * Math.pow(1.5, reconnectCountRef.current - 1);
-
           reconnectTimeoutRef.current = setTimeout(() => {
-            // Verify token is still valid before reconnecting
-            if (tokenRef.current) {
-              connect();
-            }
-          }, delay);
+            connect();
+          }, reconnectInterval * reconnectCountRef.current);
         }
       };
 
       ws.onerror = (error) => {
         console.error('WebSocket error:', error);
-        setConnectionError('Connection error');
         onError?.(error);
       };
 
@@ -161,18 +163,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
 
-          // Handle server-side authentication errors
-          if (message.type === 'auth_error') {
-            setIsAuthenticated(false);
-            setConnectionError(message.error || 'Authentication failed');
-            onAuthError?.(message.error || 'Authentication failed');
-            ws.close(AUTH_ERROR_CODE, message.error);
+          // Handle ping/pong for connection health
+          if (message.type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong' }));
             return;
-          }
-
-          // Handle successful authentication confirmation
-          if (message.type === 'connected' || message.type === 'authenticated') {
-            setIsAuthenticated(true);
           }
 
           setLastMessage(message);
@@ -183,51 +177,83 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
       };
     } catch (error) {
       console.error('Failed to create WebSocket connection:', error);
-      setConnectionError('Failed to establish connection');
     }
-  }, [user, token, url, reconnectAttempts, reconnectInterval, onMessage, onConnect, onDisconnect, onError, onAuthError, cleanup, logout]);
+  }, [user, token, url, reconnectAttempts, reconnectInterval, onMessage, onConnect, onDisconnect, onError, cleanup]);
 
-  // Send message (only if authenticated)
+  // Send message through WebSocket
   const sendMessage = useCallback((message: object) => {
-    if (!isAuthenticated) {
-      console.warn('Cannot send message: WebSocket not authenticated');
-      return;
-    }
-
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(message));
     } else {
-      console.warn('Cannot send message: WebSocket not connected');
+      // Queue message for when connection is established
+      messageQueueRef.current.push(message);
     }
-  }, [isAuthenticated]);
+  }, []);
 
-  // Connect when user/token available
+  // Subscribe to ticket updates
+  const subscribe = useCallback((ticketId: string) => {
+    subscriptionsRef.current.add(ticketId);
+    sendMessage({
+      type: 'subscribe',
+      ticket_id: ticketId
+    });
+  }, [sendMessage]);
+
+  // Unsubscribe from ticket updates
+  const unsubscribe = useCallback((ticketId: string) => {
+    subscriptionsRef.current.delete(ticketId);
+    sendMessage({
+      type: 'unsubscribe',
+      ticket_id: ticketId
+    });
+  }, [sendMessage]);
+
+  // Effect to manage connection lifecycle
   useEffect(() => {
     if (user && token) {
       connect();
-    } else {
-      cleanup();
     }
 
+    // Cleanup on unmount or when dependencies change
     return () => {
       cleanup();
     };
   }, [user, token, connect, cleanup]);
 
-  // Handle token refresh - reconnect with new token
+  // Effect to handle page visibility changes
   useEffect(() => {
-    if (isConnected && token && tokenRef.current !== token) {
-      // Token was refreshed, reconnect with new token
-      connect();
-    }
-  }, [token, isConnected, connect]);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !isConnected && user && token) {
+        connect();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isConnected, user, token, connect]);
+
+  // Effect to handle window unload
+  useEffect(() => {
+    const handleUnload = () => {
+      cleanup();
+    };
+
+    window.addEventListener('beforeunload', handleUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleUnload);
+    };
+  }, [cleanup]);
 
   return {
     isConnected,
-    isAuthenticated,
     lastMessage,
     sendMessage,
-    connectionError,
+    subscribe,
+    unsubscribe,
   };
 }
 

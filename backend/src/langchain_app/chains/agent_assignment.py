@@ -7,7 +7,7 @@ async def analyze_agent_assignment(ticket_data: dict, agents_data: List[dict]) -
     Use AI to analyze ticket information and available agents to determine
     the best agent assignment based on:
     - Category specialization match
-    - Agent workload (number of active tickets) - ACTUAL counts, not normalized
+    - Agent workload (number of active tickets)
     - Ticket priority and complexity
 
     Returns:
@@ -19,19 +19,15 @@ async def analyze_agent_assignment(ticket_data: dict, agents_data: List[dict]) -
         }
     """
 
-    # Build agent information string with clear workload emphasis
+    # Build agent information string
     agents_info = []
     for agent in agents_data:
-        # Use actual ticket count directly - no normalization
-        actual_workload = agent['active_ticket_count']
-        
         agent_str = (
             f"Agent ID: {agent['id']}\n"
             f"Name: {agent['name']}\n"
             f"Email: {agent['email']}\n"
             f"Category Specialization: {agent.get('category_name', 'None')}\n"
-            f"Current Workload: {actual_workload} active tickets\n"
-            f"Category Match: {'Yes' if agent.get('category_match') else 'No'}\n"
+            f"Active Tickets: {agent['active_ticket_count']}\n"
             f"---"
         )
         agents_info.append(agent_str)
@@ -51,30 +47,15 @@ async def analyze_agent_assignment(ticket_data: dict, agents_data: List[dict]) -
     system_prompt = """You are an intelligent ticket routing system for a customer support platform.
 Your task is to analyze a support ticket and select the best available agent based on:
 
-1. WORKLOAD BALANCE (Very Important): 
-   - STRONGLY prefer agents with fewer active tickets
-   - The "Current Workload" shows the ACTUAL number of active tickets each agent has
-   - An agent with 0 tickets should be preferred over one with 5 tickets
-   - This is critical for fair work distribution
-
-2. CATEGORY MATCH (Important): 
-   - Prefer agents specialized in the ticket's category
-   - But do not assign to an overloaded specialist if a generalist has much lower workload
-
-3. PRIORITY HANDLING: 
-   - For critical/high priority tickets, balance between skills and workload
-   - Ensure the ticket gets attention quickly by choosing an available agent
-
-SCORING GUIDANCE:
-- If two agents have similar category match, choose the one with lower workload
-- If workload difference is more than 3 tickets, prioritize the less loaded agent
-- Never choose the most loaded agent unless they are the only category specialist
+1. CATEGORY MATCH (Highest Priority): Prefer agents specialized in the ticket's category
+2. WORKLOAD BALANCE: Consider agents with fewer active tickets to distribute work evenly
+3. PRIORITY HANDLING: For critical/high priority tickets, prioritize agents with matching skills even if busier
 
 Respond with a valid JSON object containing:
 {
     "selected_agent_id": "the agent's ID string",
     "confidence": 0.0 to 1.0 indicating how confident you are in this selection,
-    "reasoning": "Brief explanation including workload consideration",
+    "reasoning": "Brief explanation of why this agent was selected",
     "factors": ["list", "of", "key", "factors", "considered"]
 }
 
@@ -96,7 +77,7 @@ TICKET INFORMATION:
 AVAILABLE AGENTS:
 {agents_list}
 
-Select the most appropriate agent, considering BOTH their workload and category expertise."""
+Select the most appropriate agent and explain your reasoning."""
 
     messages = [
         {"role": "system", "content": system_prompt},

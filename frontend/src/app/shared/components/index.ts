@@ -5,4 +5,4 @@ export * from './MainLayout';
 export * from './Sidebar';
 export * from './RichTextEditor';
 export * from './ProtectedRoute';
-export * from './EscalationRuleBuilder';
+export * from './SLAIndicator';
