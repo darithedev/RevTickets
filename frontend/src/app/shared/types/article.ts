@@ -20,6 +20,10 @@ export interface Article {
   updatedAt: string;
 }
 
+export interface GenerateTagsResponse {
+  tags: string[];
+}
+
 export interface CreateArticle {
   title: string;
   content: RichTextContent;

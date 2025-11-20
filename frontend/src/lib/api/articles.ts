@@ -1,9 +1,10 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from '../../constants';
-import type { 
-  Article, 
-  CreateArticle, 
-  UpdateArticle
+import type {
+  Article,
+  CreateArticle,
+  UpdateArticle,
+  GenerateTagsResponse
 } from '../../app/shared/types';
 
 export const articlesApi = {
