@@ -10,6 +10,7 @@ import type {
   Comment,
   CreateComment,
   UpdateComment,
+  TicketSummaryResponse,
   ClosingCommentsResponse
 } from '../../app/shared/types';
 
@@ -101,6 +102,10 @@ export const ticketsApi = {
 
   async deleteComment(id: string): Promise<void> {
     return apiClient.delete(API_ENDPOINTS.COMMENTS.BY_ID(id));
+  },
+
+  async generateSummary(ticketId: string): Promise<TicketSummaryResponse> {
+    return apiClient.post(`/tickets/${ticketId}/summary`);
   },
 
   async generateClosingComments(ticketId: string): Promise<ClosingCommentsResponse> {
