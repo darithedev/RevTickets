@@ -56,6 +56,10 @@ class TicketResponse(BaseModel):
     updated_at: datetime = Field(alias="updatedAt")
     closed_at: Optional[datetime] = Field(None, alias="closedAt")
 
+    # SLA fields
+    sla_due_date: Optional[datetime] = Field(None, alias="slaDueDate")
+    sla_breached: bool = Field(default=False, alias="slaBreached")
+
     class Config:
         populate_by_name = True
 

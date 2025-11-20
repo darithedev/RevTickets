@@ -32,6 +32,7 @@ class AIService:
         # Send to LangChain summary function
         summary = await summarize_ticket_data(summary_data)
         return TicketSummaryResponse(summary=summary)
+
     @staticmethod
     async def get_closing_comments(ticket_id: str) -> str:
         ticket = await TicketService.get_ticket(ticket_id)
@@ -62,25 +63,10 @@ class AIService:
         if not article:
             raise HTTPException(status_code=404, detail="Article not found")
 
-        # Build data for tag generation - ensure full content is passed
-        # Extract full content from the article, handling different content formats
-        full_content = ""
-        if hasattr(article, 'content'):
-            if hasattr(article.content, 'text') and article.content.text:
-                full_content = article.content.text
-            elif hasattr(article.content, 'html') and article.content.html:
-                # Strip HTML tags for text extraction
-                import re
-                full_content = re.sub(r'<[^>]+>', ' ', article.content.html)
-                full_content = ' '.join(full_content.split())  # Normalize whitespace
-            elif isinstance(article.content, str):
-                full_content = article.content
-            else:
-                full_content = str(article.content)
-
+        # Build data for tag generation
         article_data = {
             "title": article.title,
-            "content": full_content,  # Pass the full extracted content
+            "content": article.content.text if hasattr(article.content, 'text') else str(article.content),
             "category": article.category.name if article.category else None,
             "subcategory": article.subCategory.name if article.subCategory else None,
         }
@@ -99,7 +85,7 @@ class AIService:
         """Generate AI-powered tags from article content without saving."""
         article_data = {
             "title": title,
-            "content": content,  # Use the full content as provided
+            "content": content,
             "category": category,
             "subcategory": subcategory,
         }

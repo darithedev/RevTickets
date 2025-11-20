@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button, Breadcrumb, BreadcrumbItem } from 'flowbite-react';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, BookOpen, Tag, Edit, Sparkles } from 'lucide-react';
+import { ArrowLeft, Calendar, BookOpen, Tag, Sparkles } from 'lucide-react';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { articlesApi } from '../../../src/lib/api';
@@ -54,7 +54,6 @@ export default function ArticleDetailPage() {
     try {
       setGeneratingTags(true);
       const response = await articlesApi.generateTags(articleId);
-      // Update the article with new tags
       if (article) {
         setArticle({
           ...article,
@@ -85,12 +84,8 @@ export default function ArticleDetailPage() {
         <MainLayout>
           <div className="text-center py-12">
             <BookOpen className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              Article Not Found
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400 mb-4">
-              The article you&apos;re looking for doesn&apos;t exist or has been removed.
-            </p>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Article Not Found</h2>
+            <p className="text-gray-500 dark:text-gray-400 mb-4">The article you&apos;re looking for doesn&apos;t exist or has been removed.</p>
             <Button onClick={handleBack} color="gray">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Go Back
@@ -105,7 +100,6 @@ export default function ArticleDetailPage() {
     <ProtectedRoute>
       <MainLayout>
         <div className="container mx-auto px-4 py-8 space-y-6">
-          {/* Header with Breadcrumbs and Edit Button */}
           <div className="flex items-center justify-between mb-4">
             <Breadcrumb>
               <BreadcrumbItem>
@@ -117,7 +111,6 @@ export default function ArticleDetailPage() {
               <BreadcrumbItem>{article.title}</BreadcrumbItem>
             </Breadcrumb>
 
-            {/* Edit Button - visible to agents only */}
             {isAgent && (
               <Link href={`/knowledge-base/${articleId}/edit`}>
                 <Button className="bg-orange-600 hover:bg-orange-700 focus:ring-orange-500">
@@ -128,17 +121,11 @@ export default function ArticleDetailPage() {
             )}
           </div>
 
-
-          {/* Article Layout */}
           <div className="max-w-4xl mx-auto">
-            {/* Article Header */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8 mb-6">
               <div className="text-center mb-8">
-                <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4 leading-tight">
-                  {article.title}
-                </h1>
+                <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4 leading-tight">{article.title}</h1>
 
-                {/* Article Meta */}
                 <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-gray-600 dark:text-gray-400">
                   <div className="flex items-center space-x-2">
                     <Tag className="h-4 w-4" />
@@ -158,71 +145,34 @@ export default function ArticleDetailPage() {
                   )}
                 </div>
 
-                {/* AI Generated Tags Section */}
-                {(article.aiGeneratedTags && article.aiGeneratedTags.length > 0) || isAgent ? (
+                {/* AI-Generated Tags */}
+                {article.aiGeneratedTags && article.aiGeneratedTags.length > 0 && (
                   <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
                     <div className="flex items-center justify-center gap-2 mb-3">
                       <Sparkles className="h-4 w-4 text-purple-500" />
-                      <span className="text-sm font-medium text-purple-600 dark:text-purple-400">
-                        AI Generated Tags
+                      <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                        AI-Generated Tags
                       </span>
                     </div>
-                    {article.aiGeneratedTags && article.aiGeneratedTags.length > 0 ? (
-                      <div className="flex flex-wrap gap-2 justify-center">
-                        {article.aiGeneratedTags.map((tag, index) => (
-                          <span
-                            key={index}
-                            className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800 dark:bg-purple-800 dark:text-purple-100 border border-purple-200 dark:border-purple-700"
-                          >
-                            <Sparkles className="h-3 w-3 mr-1" />
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                        No AI tags generated yet.
-                      </p>
-                    )}
-                    {isAgent && (
-                      <div className="mt-4 text-center">
-                        <Button
-                          onClick={handleGenerateTags}
-                          color="purple"
-                          size="sm"
-                          disabled={generatingTags}
+                    <div className="flex flex-wrap justify-center gap-2">
+                      {article.aiGeneratedTags.map((tag, index) => (
+                        <span
+                          key={index}
+                          className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
                         >
-                          {generatingTags ? (
-                            <>
-                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
-                              Generating...
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="h-3 w-3 mr-2" />
-                              {article.aiGeneratedTags && article.aiGeneratedTags.length > 0 ? 'Regenerate Tags' : 'Generate Tags'}
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    )}
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                ) : null}
+                )}
               </div>
             </div>
 
-            {/* Article Content */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
               <div className="p-8">
                 <div className="prose prose-lg prose-gray dark:prose-invert max-w-none">
-                  <div
-                    className="text-base leading-relaxed"
-                    dangerouslySetInnerHTML={{
-                      __html: typeof article.content === 'string'
-                        ? article.content
-                        : article.content?.html || ''
-                    }}
-                  />
+                  <div className="text-base leading-relaxed" dangerouslySetInnerHTML={{ __html: typeof article.content === 'string' ? article.content : article.content?.html || '' }} />
                 </div>
               </div>
             </div>
