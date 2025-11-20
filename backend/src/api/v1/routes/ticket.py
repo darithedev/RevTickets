@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from typing import List
+from typing import List, Optional
 from beanie import PydanticObjectId
 from src.models.user import User
 from src.models.enums import TicketStatus
@@ -7,6 +7,7 @@ from src.schemas.ticket import TicketCreate, TicketUpdate, TicketResponse
 from src.schemas.comment import CommentCreate, CommentResponse
 from src.services.ticket_service import TicketService
 from src.services.comment_service import CommentService
+from src.services.assignment_service import AssignmentService
 from src.utils.security import get_current_user, get_current_agent_user
 from pydantic import BaseModel
 
@@ -21,6 +22,14 @@ class UpdateStatusRequest(BaseModel):
 
 class CloseTicketRequest(BaseModel):
     resolution_comment: str = None
+
+class AIAssignmentResponse(BaseModel):
+    success: bool
+    ticket: Optional[TicketResponse] = None
+    assignment_reason: str
+    confidence: float
+    agent_name: Optional[str] = None
+    agent_email: Optional[str] = None
 
 @router.post("/", response_model=TicketResponse)
 async def create_ticket(ticket_data: TicketCreate, current_user: User = Depends(get_current_user)):
@@ -105,6 +114,22 @@ async def assign_ticket(ticket_id: PydanticObjectId, request: AssignTicketReques
 @router.post("/{ticket_id}/auto-assign", response_model=TicketResponse)
 async def auto_assign_ticket(ticket_id: PydanticObjectId, current_user: User = Depends(get_current_agent_user)):
     return await TicketService.auto_assign_ticket(ticket_id)
+
+@router.post("/{ticket_id}/ai-reassign", response_model=AIAssignmentResponse)
+async def ai_reassign_ticket(ticket_id: PydanticObjectId, current_user: User = Depends(get_current_agent_user)):
+    """Use AI to reassign ticket to the most suitable agent"""
+    result = await AssignmentService.reassign_ticket_ai(ticket_id)
+    response = AIAssignmentResponse(
+        success=result["success"],
+        assignment_reason=result["assignment_reason"],
+        confidence=result.get("confidence", 0)
+    )
+    if result["success"] and result["agent"]:
+        ticket_response = await TicketService.get_ticket(ticket_id)
+        response.ticket = ticket_response
+        response.agent_name = f"{result['agent'].first_name} {result['agent'].last_name}"
+        response.agent_email = result["agent"].email
+    return response
 
 # Status management endpoints
 @router.patch("/{ticket_id}/status", response_model=TicketResponse)

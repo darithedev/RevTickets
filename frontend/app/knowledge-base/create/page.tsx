@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card, Label, TextInput, Select } from 'flowbite-react';
-import { ArrowLeft, Save } from 'lucide-react';
+import { Button, Card, Label, TextInput, Select, Badge } from 'flowbite-react';
+import { ArrowLeft, Save, Sparkles, X } from 'lucide-react';
 import { MainLayout, ProtectedRoute } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
 import { RichTextEditor } from '../../../src/app/shared/components/RichTextEditor';
@@ -17,13 +17,15 @@ export default function CreateArticlePage() {
   const { } = useAuth();
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  
+  const [generatingTags, setGeneratingTags] = useState(false);
+
   // Form state
   const [title, setTitle] = useState('');
   const [content, setContent] = useState<RichTextContent>(createEmptyRichText());
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState('');
-  
+  const [aiGeneratedTags, setAiGeneratedTags] = useState<string[]>([]);
+
   // Data state
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<SubCategory[]>([]);
@@ -96,6 +98,37 @@ export default function CreateArticlePage() {
 
   const handleBack = () => {
     router.back();
+  };
+
+  const handleGenerateTags = async () => {
+    if (!title.trim() || !content.text.trim()) {
+      alert('Please provide a title and content before generating tags');
+      return;
+    }
+
+    try {
+      setGeneratingTags(true);
+      const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+      const selectedSubcategory = availableSubcategories.find(s => s.id === selectedSubcategoryId);
+
+      const result = await articlesApi.generateTags({
+        title: title.trim(),
+        content: content.text,
+        category: selectedCategory?.name,
+        subcategory: selectedSubcategory?.name,
+      });
+
+      setAiGeneratedTags(result.tags);
+    } catch (error) {
+      console.error('Failed to generate tags:', error);
+      alert('Failed to generate tags. Please try again.');
+    } finally {
+      setGeneratingTags(false);
+    }
+  };
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setAiGeneratedTags(aiGeneratedTags.filter(tag => tag !== tagToRemove));
   };
 
   if (loading) {
@@ -214,6 +247,58 @@ export default function CreateArticlePage() {
                     className="min-h-[400px]"
                   />
                 </div>
+              </div>
+
+              {/* AI Tag Generation */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-base font-medium">
+                    AI-Generated Tags
+                  </Label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    color="purple"
+                    onClick={handleGenerateTags}
+                    disabled={generatingTags || !title.trim() || !content.text.trim()}
+                  >
+                    {generatingTags ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Generate Tags with AI
+                      </>
+                    )}
+                  </Button>
+                </div>
+                {aiGeneratedTags.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    {aiGeneratedTags.map((tag, index) => (
+                      <Badge
+                        key={index}
+                        color="purple"
+                        className="flex items-center gap-1 px-3 py-1"
+                      >
+                        {tag}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveTag(tag)}
+                          className="ml-1 hover:text-red-500"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                    Click &quot;Generate Tags with AI&quot; to automatically generate relevant tags based on your article content.
+                  </p>
+                )}
               </div>
 
               {/* Actions */}
