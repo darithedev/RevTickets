@@ -19,6 +19,9 @@ export default function KnowledgeBasePage() {
   const { user } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_RETRIES = 3;
 
   // Search function for the debounced search hook
   const searchArticles = useCallback(async (query: string) => {
@@ -42,14 +45,37 @@ export default function KnowledgeBasePage() {
   const fetchArticles = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await articlesApi.getAll();
       setArticles(data);
-    } catch (error) {
-      console.error('Failed to fetch articles:', error);
+      setRetryCount(0);
+    } catch (err: any) {
+      console.error('Failed to fetch articles:', err);
+
+      // Implement retry with exponential backoff
+      if (retry < MAX_RETRIES) {
+        const delay = Math.pow(2, retry) * 1000; // 1s, 2s, 4s
+        setRetryCount(retry + 1);
+        setError(`Loading articles... (Retry ${retry + 1}/${MAX_RETRIES})`);
+
+        setTimeout(() => {
+          fetchArticles(retry + 1);
+        }, delay);
+      } else {
+        setError('Failed to load articles. The search index may need to be rebuilt. Please try again later.');
+        setRetryCount(0);
+      }
     } finally {
-      setLoading(false);
+      if (retryCount === 0 || retryCount >= MAX_RETRIES) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [retryCount]);
+
+  const handleRetry = () => {
+    setError(null);
+    fetchArticles(0);
+  };
 
   useEffect(() => {
     fetchArticles();
@@ -140,9 +166,29 @@ export default function KnowledgeBasePage() {
             )}
           </Card>
 
+          {/* Error Alert */}
+          {error && !loading && (
+            <Alert color="warning" className="mb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 mr-2" />
+                  <span>{error}</span>
+                </div>
+                <Button
+                  size="xs"
+                  color="warning"
+                  onClick={handleRetry}
+                >
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Retry
+                </Button>
+              </div>
+            </Alert>
+          )}
+
           {/* Articles Table */}
           <Card>
-            {filteredArticles.length === 0 ? (
+            {filteredArticles.length === 0 && !error ? (
               <div className="text-center py-12">
                 <div className="text-gray-500 dark:text-gray-400">
                   <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />

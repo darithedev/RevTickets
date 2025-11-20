@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from src.schemas.article import ArticleCreate, ArticleUpdate, ArticleResponse
 from beanie import PydanticObjectId
 from src.services.article_service import ArticleService
@@ -22,20 +22,28 @@ router = APIRouter(prefix="/articles", tags=["Articles"])
 @router.post("/", response_model=ArticleResponse, dependencies=[Depends(get_current_agent_user)])
 async def create_article(data: ArticleCreate):
     try:
-        return await ArticleService.create_article(data)
+        result = await ArticleService.create_article(data)
+        # Update search index after creation
+        await search_manager.update_article_index(result.id)
+        return result
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.put("/{article_id}", response_model=ArticleResponse, dependencies=[Depends(get_current_agent_user)])
 async def update_article(article_id: str, data: ArticleUpdate):
     try:
-        return await ArticleService.update_article(article_id, data)
+        result = await ArticleService.update_article(article_id, data)
+        # Update search index after update
+        await search_manager.update_article_index(article_id)
+        return result
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 @router.delete("/{article_id}", dependencies=[Depends(get_current_agent_user)])
 async def delete_article(article_id: str):
     await ArticleService.delete_article(article_id)
+    # Remove from search index
+    await search_manager.remove_from_index(article_id)
     return {"message": "Article deleted"}
 
 # Public routes (all authenticated users can browse)
