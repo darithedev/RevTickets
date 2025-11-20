@@ -4,12 +4,12 @@ export { apiClient } from './client';
 import { ticketsApi } from './tickets';
 import { categoriesApi, subCategoriesApi } from './categories';
 import { articlesApi } from './articles';
-import { sentimentApi } from './sentiment';
+import { escalationsApi } from './escalations';
 
 export {
   ticketsApi,
   categoriesApi,
   subCategoriesApi,
   articlesApi,
-  sentimentApi
+  escalationsApi
 };

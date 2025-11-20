@@ -57,7 +57,24 @@ export const API_ENDPOINTS = {
     BASE: '/articles',
     BY_ID: (id: string) => `/articles/${id}`,
     SEARCH: '/articles/search',
-    GENERATE_TAGS: (id: string) => `/articles/${id}/generate-tags`,
+    GENERATE_TAGS: '/articles/generate-tags',
+    GENERATE_TAGS_BY_ID: (id: string) => `/articles/${id}/generate-tags`,
+  },
+
+  // Knowledge Base Chat
+  KB_CHAT: {
+    CHAT: '/kb-chat/chat',
+    SUGGEST_TICKET: '/kb-chat/suggest-ticket',
+    RELATED: (articleId: string) => `/kb-chat/related/${articleId}`,
+  },
+
+  // Sentiment Analysis
+  SENTIMENT: {
+    TICKET: (ticketId: string) => `/sentiment/ticket/${ticketId}`,
+    TICKET_FULL: (ticketId: string) => `/sentiment/ticket/${ticketId}/full`,
+    TICKET_ESCALATION: (ticketId: string) => `/sentiment/ticket/${ticketId}/escalation`,
+    COMMENT: (commentId: string) => `/sentiment/comment/${commentId}`,
+    ANALYTICS: '/sentiment/analytics',
   },
 
   // Sentiment Analysis
