@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Button, Card, Label, TextInput, Select, Alert } from 'flowbite-react';
-import { ArrowLeft, Save, AlertCircle, CheckCircle } from 'lucide-react';
+import { Button, Card, Label, TextInput, Select } from 'flowbite-react';
+import { ArrowLeft, Save } from 'lucide-react';
 import { MainLayout, ProtectedRoute } from '../../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../../src/app/shared/components';
 import { RichTextEditor } from '../../../../src/app/shared/components/RichTextEditor';
 import { articlesApi, categoriesApi, subCategoriesApi } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/contexts/AuthContext';
 import type { Category, SubCategory, UpdateArticle, RichTextContent, Article } from '../../../../src/app/shared/types';
+import { createEmptyRichText } from '../../../../src/lib/utils';
 
 export default function EditArticlePage() {
   const params = useParams();
@@ -17,15 +18,12 @@ export default function EditArticlePage() {
   const { } = useAuth();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
-  // Original article data
-  const [article, setArticle] = useState<Article | null>(null);
+  const articleId = params.id as string;
 
   // Form state
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState<RichTextContent>({ text: '', html: '' });
+  const [content, setContent] = useState<RichTextContent>(createEmptyRichText());
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState('');
 
@@ -33,35 +31,49 @@ export default function EditArticlePage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<SubCategory[]>([]);
   const [availableSubcategories, setAvailableSubcategories] = useState<SubCategory[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const articleId = params.id as string;
-
-  // Fetch article and categories data
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        const [articleData, categoriesData, subcategoriesData] = await Promise.all([
-          articlesApi.getById(articleId),
+        // Fetch categories, subcategories, and article data in parallel
+        const [categoriesData, subcategoriesData, articleData] = await Promise.all([
           categoriesApi.getAll(),
-          subCategoriesApi.getAll()
+          subCategoriesApi.getAll(),
+          articlesApi.getById(articleId)
         ]);
 
-        setArticle(articleData);
         setCategories(categoriesData);
         setSubcategories(subcategoriesData);
 
         // Pre-populate form with existing article data
-        setTitle(articleData.title);
-        setContent(articleData.content);
-        setSelectedCategoryId(articleData.category?.id || '');
-        setSelectedSubcategoryId(articleData.subCategory?.id || '');
+        if (articleData) {
+          setTitle(articleData.title);
 
+          // Handle content - convert to RichTextContent format if needed
+          if (typeof articleData.content === 'string') {
+            setContent({
+              text: articleData.content,
+              html: articleData.content
+            });
+          } else if (articleData.content) {
+            setContent(articleData.content as RichTextContent);
+          }
+
+          // Set category and subcategory
+          if (articleData.category?.id) {
+            setSelectedCategoryId(articleData.category.id);
+          }
+          if (articleData.subCategory?.id) {
+            setSelectedSubcategoryId(articleData.subCategory.id);
+          }
+        }
       } catch (error) {
-        console.error('Failed to fetch article:', error);
-        setError('Failed to load article. Please try again.');
+        console.error('Failed to fetch data:', error);
+        setError('Failed to load article data');
       } finally {
         setLoading(false);
       }
@@ -87,33 +99,11 @@ export default function EditArticlePage() {
     }
   }, [selectedCategoryId, subcategories, selectedSubcategoryId]);
 
-  const validateForm = (): boolean => {
-    if (!title.trim()) {
-      setError('Title is required');
-      return false;
-    }
-    if (!content.text.trim()) {
-      setError('Content is required');
-      return false;
-    }
-    if (!selectedCategoryId) {
-      setError('Category is required');
-      return false;
-    }
-    if (!selectedSubcategoryId) {
-      setError('Subcategory is required');
-      return false;
-    }
-    return true;
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    setError(null);
-    setSuccess(null);
-
-    if (!validateForm()) {
+    if (!title.trim() || !content.text.trim() || !selectedCategoryId || !selectedSubcategoryId) {
+      alert('Please fill in all required fields');
       return;
     }
 
@@ -129,23 +119,18 @@ export default function EditArticlePage() {
 
       await articlesApi.update(articleId, articleData);
 
-      setSuccess('Article updated successfully!');
-
-      // Redirect to the article after a short delay
-      setTimeout(() => {
-        router.push(`/knowledge-base/${articleId}`);
-      }, 1500);
-
+      // Redirect back to the article
+      router.push(`/knowledge-base/${articleId}`);
     } catch (error) {
       console.error('Failed to update article:', error);
-      setError('Failed to update article. Please try again.');
+      alert('Failed to update article. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleCancel = () => {
-    router.push(`/knowledge-base/${articleId}`);
+  const handleBack = () => {
+    router.back();
   };
 
   if (loading) {
@@ -158,21 +143,18 @@ export default function EditArticlePage() {
     );
   }
 
-  if (!article && !loading) {
+  if (error) {
     return (
       <ProtectedRoute requiredRole="agent">
         <MainLayout>
           <div className="text-center py-12">
-            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-gray-400" />
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-              Article Not Found
+              Error Loading Article
             </h2>
-            <p className="text-gray-500 dark:text-gray-400 mb-4">
-              The article you&apos;re trying to edit doesn&apos;t exist or has been removed.
-            </p>
-            <Button onClick={() => router.push('/knowledge-base')} color="gray">
+            <p className="text-gray-500 dark:text-gray-400 mb-4">{error}</p>
+            <Button onClick={handleBack} color="gray">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Knowledge Base
+              Go Back
             </Button>
           </div>
         </MainLayout>
@@ -188,7 +170,7 @@ export default function EditArticlePage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <Button
-                onClick={handleCancel}
+                onClick={handleBack}
                 color="gray"
                 className="flex items-center"
               >
@@ -200,24 +182,11 @@ export default function EditArticlePage() {
                   Edit Article
                 </h1>
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Update the article content and details
+                  Update the article in the knowledge base
                 </p>
               </div>
             </div>
           </div>
-
-          {/* Success/Error Alerts */}
-          {error && (
-            <Alert color="failure" icon={AlertCircle} onDismiss={() => setError(null)}>
-              <span className="font-medium">Error!</span> {error}
-            </Alert>
-          )}
-
-          {success && (
-            <Alert color="success" icon={CheckCircle}>
-              <span className="font-medium">Success!</span> {success}
-            </Alert>
-          )}
 
           {/* Form */}
           <Card className="max-w-4xl">
@@ -306,7 +275,7 @@ export default function EditArticlePage() {
                 <Button
                   type="button"
                   color="gray"
-                  onClick={handleCancel}
+                  onClick={handleBack}
                   disabled={submitting}
                 >
                   Cancel
