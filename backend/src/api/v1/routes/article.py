@@ -2,9 +2,19 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from src.schemas.article import ArticleCreate, ArticleUpdate, ArticleResponse
 from beanie import PydanticObjectId
 from src.services.article_service import ArticleService
-from src.services.search import search_manager
-from typing import List, Optional
+from src.services.ai_service import AIService
+from typing import List
 from src.utils.security import get_current_agent_user, get_current_user
+from pydantic import BaseModel
+
+class GenerateTagsRequest(BaseModel):
+    title: str
+    content: str
+    category: str = None
+    subcategory: str = None
+
+class GenerateTagsResponse(BaseModel):
+    tags: List[str]
 
 router = APIRouter(prefix="/articles", tags=["Articles"])
 
@@ -56,40 +66,26 @@ async def get_articles_by_category(category_id: str):
 async def get_articles_by_subcategory(subcategory_id: str):
     return await ArticleService.get_articles_by_subcategory(subcategory_id)
 
-# Search endpoints
-@router.get("/search/", response_model=List[ArticleResponse], dependencies=[Depends(get_current_user)])
-async def search_articles(
-    q: str = Query(..., min_length=1, description="Search query"),
-    category_id: Optional[str] = Query(None, description="Filter by category"),
-    subcategory_id: Optional[str] = Query(None, description="Filter by subcategory"),
-    limit: int = Query(50, ge=1, le=100, description="Max results to return")
-):
-    """Search articles with full-text search and optional filters."""
+# AI-powered tag generation endpoints
+@router.post("/generate-tags", response_model=GenerateTagsResponse, dependencies=[Depends(get_current_agent_user)])
+async def generate_tags_from_content(data: GenerateTagsRequest):
+    """Generate AI-powered tags from article content (without saving)."""
     try:
-        results = await search_manager.search_articles(
-            query=q,
-            category_id=category_id,
-            subcategory_id=subcategory_id,
-            limit=limit
+        tags = await AIService.generate_tags_from_content(
+            title=data.title,
+            content=data.content,
+            category=data.category,
+            subcategory=data.subcategory
         )
-        # Convert results to ArticleResponse format
-        return [await ArticleService.get_article(str(r["_id"])) for r in results if "_id" in r]
+        return GenerateTagsResponse(tags=tags)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/search/rebuild-index", dependencies=[Depends(get_current_agent_user)])
-async def rebuild_search_index(force: bool = Query(False)):
-    """Rebuild search indexes. Admin operation."""
+@router.post("/{article_id}/generate-tags", response_model=GenerateTagsResponse, dependencies=[Depends(get_current_agent_user)])
+async def generate_article_tags(article_id: str):
+    """Generate and save AI-powered tags for an existing article."""
     try:
-        success = await search_manager.rebuild_indexes(force=force)
-        if success:
-            return {"message": "Search indexes rebuilt successfully"}
-        else:
-            raise HTTPException(status_code=500, detail="Failed to rebuild indexes")
+        tags = await AIService.generate_article_tags(article_id)
+        return GenerateTagsResponse(tags=tags)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to rebuild indexes: {str(e)}")
-
-@router.get("/search/status", dependencies=[Depends(get_current_agent_user)])
-async def get_search_index_status():
-    """Get search index status and health information."""
-    return await search_manager.validate_index_integrity()
+        raise HTTPException(status_code=404, detail=str(e))
