@@ -204,6 +204,27 @@ export default function TicketDetailPage() {
     }
   };
 
+  // AI closing suggestion handlers
+  const handleGenerateClosingSuggestion = async () => {
+    if (!ticketId) return;
+
+    try {
+      setGeneratingSuggestion(true);
+      const suggestion = await ticketsApi.generateClosingComments(ticketId);
+      setClosingSuggestion(suggestion);
+    } catch (error) {
+      console.error('Failed to generate closing suggestion:', error);
+    } finally {
+      setGeneratingSuggestion(false);
+    }
+  };
+
+  const handleApplySuggestion = () => {
+    if (closingSuggestion) {
+      setClosingComment(closingSuggestion.comment);
+    }
+  };
+
   // Check if current user can modify this ticket (agent assigned to it)
   const canModifyTicket = user?.role === 'agent' && ticket?.agentInfo?.id === user.id;
 
@@ -844,6 +865,48 @@ export default function TicketDetailPage() {
                   {/* Close Ticket Form */}
                   {showCloseForm && (
                     <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+                      {/* AI Closing Suggestions Section */}
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            AI Suggestions
+                          </span>
+                          <Button
+                            size="xs"
+                            className="bg-purple-600 hover:bg-purple-700 focus:ring-purple-500"
+                            onClick={handleGenerateClosingSuggestion}
+                            disabled={generatingSuggestion}
+                          >
+                            <Sparkles className="h-3 w-3 mr-1" />
+                            {generatingSuggestion ? 'Generating...' : 'Generate'}
+                          </Button>
+                        </div>
+
+                        {closingSuggestion && (
+                          <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 mb-3 border border-purple-200 dark:border-purple-800">
+                            <div className="mb-2">
+                              <span className="text-xs font-medium text-purple-700 dark:text-purple-300">Reason:</span>
+                              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
+                                {closingSuggestion.reason}
+                              </p>
+                            </div>
+                            <div className="mb-3">
+                              <span className="text-xs font-medium text-purple-700 dark:text-purple-300">Suggested Comment:</span>
+                              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
+                                {closingSuggestion.comment}
+                              </p>
+                            </div>
+                            <Button
+                              size="xs"
+                              className="w-full bg-purple-600 hover:bg-purple-700 focus:ring-purple-500"
+                              onClick={handleApplySuggestion}
+                            >
+                              Apply Suggestion
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                         Closing Comment <span className="text-red-500">*</span>
                       </label>
@@ -871,6 +934,7 @@ export default function TicketDetailPage() {
                           onClick={() => {
                             setShowCloseForm(false);
                             setClosingComment('');
+                            setClosingSuggestion(null);
                           }}
                           disabled={updatingStatus}
                         >
