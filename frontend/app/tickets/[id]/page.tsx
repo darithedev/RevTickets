@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { Breadcrumb, BreadcrumbItem, Button, Avatar, Textarea } from 'flowbite-react';
-import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, RotateCcw } from 'lucide-react';
+import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, RotateCcw, Brain, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { MainLayout, ProtectedRoute, SLAIndicator } from '../../../src/app/shared/components';
 import { LoadingSpinner } from '../../../src/app/shared/components';
@@ -11,7 +11,7 @@ import { RichTextEditor } from '../../../src/app/shared/components/RichTextEdito
 import { ticketsApi } from '../../../src/lib/api';
 import { formatFullDateTime, canEditComment, getEditTimeRemaining, canReopenTicket, getReopenTimeRemaining } from '../../../src/lib/utils';
 import { useAuth } from '../../../src/contexts/AuthContext';
-import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus } from '../../../src/app/shared/types';
+import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus, ClosingCommentsResponse } from '../../../src/app/shared/types';
 import { createEmptyRichText, convertLegacyContent } from '../../../src/lib/utils';
 
 export default function TicketDetailPage() {
@@ -39,6 +39,14 @@ export default function TicketDetailPage() {
   const [showReopenForm, setShowReopenForm] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const [reopening, setReopening] = useState(false);
+
+  // AI Summary states
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  // AI closing suggestions states
+  const [closingSuggestion, setClosingSuggestion] = useState<ClosingCommentsResponse | null>(null);
+  const [generatingSuggestion, setGeneratingSuggestion] = useState(false);
 
   const fetchTicketData = useCallback(async () => {
     if (!ticketId) return;
@@ -204,7 +212,51 @@ export default function TicketDetailPage() {
     (ticket?.status === 'closed' || ticket?.status === 'resolved') &&
     ticket?.closedAt &&
     canReopenTicket(ticket.closedAt);
-  
+
+  // Handle AI summary generation
+  const handleGenerateSummary = async () => {
+    if (!ticketId) return;
+
+    try {
+      setGeneratingSummary(true);
+      setSummaryError(null);
+      const response = await ticketsApi.generateSummary(ticketId);
+
+      // Update the ticket with the new summary
+      setTicket(prev => prev ? {
+        ...prev,
+        aiSummary: response.summary,
+        summaryGeneratedAt: response.generatedAt
+      } : null);
+    } catch (error) {
+      console.error('Failed to generate summary:', error);
+      setSummaryError('Failed to generate summary. Please try again.');
+    } finally {
+      setGeneratingSummary(false);
+    }
+  };
+
+  // AI closing suggestion handlers
+  const handleGenerateClosingSuggestion = async () => {
+    if (!ticketId) return;
+
+    try {
+      setGeneratingSuggestion(true);
+      const suggestion = await ticketsApi.generateClosingComments(ticketId);
+      setClosingSuggestion(suggestion);
+    } catch (error) {
+      console.error('Failed to generate closing suggestion:', error);
+    } finally {
+      setGeneratingSuggestion(false);
+    }
+  };
+
+  const handleApplySuggestion = () => {
+    if (closingSuggestion) {
+      setClosingComment(closingSuggestion.comment);
+    }
+  };
+
 
 
   if (loading) {
@@ -435,6 +487,65 @@ export default function TicketDetailPage() {
                       className="border-none bg-transparent"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* AI Summary Section */}
+              <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                <div className="border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Brain className="h-5 w-5 text-purple-500" />
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        AI Summary
+                      </h3>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="bg-purple-600 hover:bg-purple-700 focus:ring-purple-500"
+                      onClick={handleGenerateSummary}
+                      disabled={generatingSummary}
+                    >
+                      {generatingSummary ? (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          {ticket.aiSummary ? 'Regenerate' : 'Generate Summary'}
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+                <div className="p-6">
+                  {summaryError && (
+                    <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <p className="text-sm text-red-600 dark:text-red-400">{summaryError}</p>
+                    </div>
+                  )}
+                  {ticket.aiSummary ? (
+                    <div>
+                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4 border border-purple-200 dark:border-purple-800">
+                        <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                          {ticket.aiSummary}
+                        </p>
+                      </div>
+                      {ticket.summaryGeneratedAt && (
+                        <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                          Generated on {formatFullDateTime(ticket.summaryGeneratedAt)}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                      <Brain className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p className="text-lg font-medium">No summary generated yet</p>
+                      <p className="text-sm">Click the button above to generate an AI summary of this ticket.</p>
+                    </div>
+                  )}
                 </div>
               </div>
 

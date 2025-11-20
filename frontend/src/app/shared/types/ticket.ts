@@ -26,6 +26,14 @@ export interface Ticket {
   createdAt: string;
   updatedAt: string;
   closedAt?: string;
+  aiSummary?: string;
+  summaryGeneratedAt?: string;
+}
+
+export interface TicketSummaryResponse {
+  ticketId: string;
+  summary: string;
+  generatedAt: string;
 }
 
 export interface UserInfo {
@@ -104,4 +112,9 @@ export interface TicketAssignment {
 
 export interface TicketClosure {
   resolution: string;
+}
+
+export interface ClosingCommentsResponse {
+  reason: string;
+  comment: string;
 }
