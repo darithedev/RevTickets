@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Button, Card, Table, TableHead, TableHeadCell, TableRow, TableCell, TableBody } from 'flowbite-react';
-import { Plus, BookOpen, Calendar } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Button, Card, Table, TableHead, TableHeadCell, TableRow, TableCell, TableBody, TextInput } from 'flowbite-react';
+import { Plus, BookOpen, Calendar, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MainLayout, ProtectedRoute } from '../../src/app/shared/components';
@@ -12,24 +12,84 @@ import { formatFullDateTime } from '../../src/lib/utils';
 import { useAuth } from '../../src/contexts/AuthContext';
 import type { Article } from '../../src/app/shared/types';
 import { getRichTextDisplay } from '../../src/lib/utils';
+import { useDebounceSearch } from '../../src/hooks/useDebounceSearch';
 
 export default function KnowledgeBasePage() {
   const router = useRouter();
   const { user } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_RETRIES = 3;
+
+  // Search function for the debounced search hook
+  const searchArticles = useCallback(async (query: string) => {
+    return articlesApi.search({ q: query });
+  }, []);
+
+  // Debounced search hook
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    results: searchResults,
+    isSearching,
+    error: searchError,
+    clearSearch,
+  } = useDebounceSearch<Article>({
+    searchFn: searchArticles,
+    delay: 300,
+    minLength: 1,
+  });
+
+  // Search hook for KB articles
+  const searchArticles = useCallback(
+    (query: string) => articlesApi.search({ q: query }),
+    []
+  );
+
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    results: searchResults,
+    loading: searchLoading,
+    isSearching,
+  } = useDebounceSearch<Article[]>(searchArticles, 300);
 
   const fetchArticles = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       const data = await articlesApi.getAll();
       setArticles(data);
-    } catch (error) {
-      console.error('Failed to fetch articles:', error);
+      setRetryCount(0);
+    } catch (err: any) {
+      console.error('Failed to fetch articles:', err);
+
+      // Implement retry with exponential backoff
+      if (retry < MAX_RETRIES) {
+        const delay = Math.pow(2, retry) * 1000; // 1s, 2s, 4s
+        setRetryCount(retry + 1);
+        setError(`Loading articles... (Retry ${retry + 1}/${MAX_RETRIES})`);
+
+        setTimeout(() => {
+          fetchArticles(retry + 1);
+        }, delay);
+      } else {
+        setError('Failed to load articles. The search index may need to be rebuilt. Please try again later.');
+        setRetryCount(0);
+      }
     } finally {
-      setLoading(false);
+      if (retryCount === 0 || retryCount >= MAX_RETRIES) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [retryCount]);
+
+  const handleRetry = () => {
+    setError(null);
+    fetchArticles(0);
+  };
 
   useEffect(() => {
     fetchArticles();
@@ -39,7 +99,13 @@ export default function KnowledgeBasePage() {
     router.push(`/knowledge-base/${articleId}`);
   };
 
-  const filteredArticles = articles;
+  // Display search results when searching, otherwise show all articles
+  const filteredArticles = useMemo(() => {
+    if (searchQuery.length > 0) {
+      return searchResults;
+    }
+    return articles;
+  }, [searchQuery, searchResults, articles]);
 
   if (loading) {
     return (
@@ -74,22 +140,96 @@ export default function KnowledgeBasePage() {
             </div>
           </div>
 
+          {/* Search Bar */}
+          <Card>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 relative">
+                <TextInput
+                  type="text"
+                  placeholder="Search articles by title..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  icon={Search}
+                  className="w-full"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={clearSearch}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+            {isSearching && (
+              <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Searching...
+              </div>
+            )}
+            {searchError && (
+              <div className="mt-2 text-sm text-red-500">
+                {searchError}
+              </div>
+            )}
+            {searchQuery && !isSearching && (
+              <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                {filteredArticles.length} {filteredArticles.length === 1 ? 'result' : 'results'} found for "{searchQuery}"
+              </div>
+            )}
+          </Card>
+
+          {/* Error Alert */}
+          {error && !loading && (
+            <Alert color="warning" className="mb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <AlertTriangle className="h-5 w-5 mr-2" />
+                  <span>{error}</span>
+                </div>
+                <Button
+                  size="xs"
+                  color="warning"
+                  onClick={handleRetry}
+                >
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Retry
+                </Button>
+              </div>
+            </Alert>
+          )}
 
           {/* Articles Table */}
           <Card>
-            {filteredArticles.length === 0 ? (
+            {filteredArticles.length === 0 && !error ? (
               <div className="text-center py-12">
                 <div className="text-gray-500 dark:text-gray-400">
                   <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <h3 className="text-lg font-medium mb-2">No articles yet</h3>
-                  <p className="text-sm">Articles will appear here once they are created</p>
-                  {user?.role === 'agent' && (
-                    <Link href="/knowledge-base/create">
-                      <Button className="mt-4 bg-orange-600 hover:bg-orange-700 focus:ring-orange-500">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Create First Article
+                  {searchQuery ? (
+                    <>
+                      <h3 className="text-lg font-medium mb-2">No articles found</h3>
+                      <p className="text-sm">No articles match your search "{searchQuery}"</p>
+                      <Button
+                        className="mt-4 bg-gray-600 hover:bg-gray-700 focus:ring-gray-500"
+                        onClick={clearSearch}
+                      >
+                        Clear Search
                       </Button>
-                    </Link>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="text-lg font-medium mb-2">No articles yet</h3>
+                      <p className="text-sm">Articles will appear here once they are created</p>
+                      {user?.role === 'agent' && (
+                        <Link href="/knowledge-base/create">
+                          <Button className="mt-4 bg-orange-600 hover:bg-orange-700 focus:ring-orange-500">
+                            <Plus className="h-4 w-4 mr-2" />
+                            Create First Article
+                          </Button>
+                        </Link>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

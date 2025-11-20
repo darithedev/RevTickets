@@ -44,7 +44,16 @@ export const articlesApi = {
     return apiClient.get(API_ENDPOINTS.ARTICLES.SEARCH, { params });
   },
 
-  async generateTags(id: string): Promise<GenerateTagsResponse> {
-    return apiClient.post(API_ENDPOINTS.ARTICLES.GENERATE_TAGS(id));
+  async generateTags(data: {
+    title: string;
+    content: string;
+    category?: string;
+    subcategory?: string;
+  }): Promise<{ tags: string[] }> {
+    return apiClient.post(API_ENDPOINTS.ARTICLES.GENERATE_TAGS, data);
+  },
+
+  async generateTagsById(id: string): Promise<{ tags: string[] }> {
+    return apiClient.post(API_ENDPOINTS.ARTICLES.GENERATE_TAGS_BY_ID(id));
   },
 };

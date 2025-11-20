@@ -1,0 +1,33 @@
+# <type>: <subject> (max 50 chars)
+# |<----  Using a Maximum Of 50 Characters  ---->|
+
+# Explain why this change is being made (wrap at 72 chars)
+# |<----   Try To Limit Each Line to a Maximum Of 72 Characters   ---->|
+
+# Prompt: [What you asked the AI assistant, if applicable]
+
+# Context: [Business need, bug report, feature request]
+
+# Implementation details:
+# - [Key technical decision 1]
+# - [Key technical decision 2]
+
+# Breaking changes:
+# - [List any breaking changes]
+
+# Related issues/PRs:
+# - Fixes #issue_number
+# - Related to #issue_number
+
+# --- COMMIT TYPES ---
+# feat:     New feature
+# fix:      Bug fix
+# docs:     Documentation only changes
+# style:    Code style changes (formatting, semicolons, etc)
+# refactor: Code change that neither fixes a bug nor adds a feature
+# perf:     Performance improvement
+# test:     Adding or updating tests
+# chore:    Maintenance tasks, dependency updates
+# ci:       CI/CD changes
+# build:    Build system or external dependencies
+# revert:   Revert a previous commit
