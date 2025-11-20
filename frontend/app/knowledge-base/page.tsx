@@ -42,6 +42,20 @@ export default function KnowledgeBasePage() {
     minLength: 1,
   });
 
+  // Search hook for KB articles
+  const searchArticles = useCallback(
+    (query: string) => articlesApi.search({ q: query }),
+    []
+  );
+
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    results: searchResults,
+    loading: searchLoading,
+    isSearching,
+  } = useDebounceSearch<Article[]>(searchArticles, 300);
+
   const fetchArticles = useCallback(async () => {
     try {
       setLoading(true);
