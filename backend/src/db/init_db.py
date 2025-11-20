@@ -32,4 +32,12 @@ async def init_db():
 
         ]
     )
-    print("Finished DB init.")  # Debug print
+
+    # Create indexes for SLA monitoring
+    ticket_collection = db.get_collection("tickets")
+    await ticket_collection.create_index("slaDueDate")
+    await ticket_collection.create_index("slaBreached")
+    await ticket_collection.create_index([("status", 1), ("slaDueDate", 1)])
+    await ticket_collection.create_index([("slaBreached", 1), ("status", 1)])
+
+    print("Finished DB init with SLA indexes.")  # Debug print
