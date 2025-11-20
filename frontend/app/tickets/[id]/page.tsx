@@ -1027,6 +1027,92 @@ export default function TicketDetailPage() {
                 </div>
               )}
 
+              {/* Sentiment Analysis Card - Agent Only */}
+              {user?.role === 'agent' && (
+                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                  <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center">
+                        <Brain className="h-4 w-4 mr-2" />
+                        Sentiment Analysis
+                      </h3>
+                      <Button
+                        size="xs"
+                        color="gray"
+                        onClick={fetchSentiment}
+                        disabled={loadingSentiment}
+                      >
+                        {loadingSentiment ? 'Analyzing...' : 'Analyze'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    {sentimentData ? (
+                      <div className="space-y-4">
+                        <div>
+                          <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                            TICKET SENTIMENT
+                          </dt>
+                          <SentimentIndicator
+                            sentiment={sentimentData.ticket_sentiment.sentiment}
+                            score={sentimentData.ticket_sentiment.score}
+                            confidence={sentimentData.ticket_sentiment.confidence}
+                            emotions={sentimentData.ticket_sentiment.emotions}
+                            escalationRecommended={sentimentData.ticket_sentiment.escalation_recommended}
+                            showDetails
+                          />
+                        </div>
+                        <div>
+                          <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                            OVERALL SCORE
+                          </dt>
+                          <dd className="text-lg font-semibold text-gray-900 dark:text-white">
+                            {(sentimentData.overall_trends.average_score * 100).toFixed(0)}%
+                          </dd>
+                        </div>
+                        {sentimentData.ticket_sentiment.escalation_recommended && (
+                          <div className="flex items-center p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                            <AlertTriangle className="h-4 w-4 text-yellow-500 mr-2" />
+                            <span className="text-xs text-yellow-700 dark:text-yellow-300">
+                              Escalation recommended
+                            </span>
+                          </div>
+                        )}
+                        {sentimentData.overall_trends.common_emotions.length > 0 && (
+                          <div>
+                            <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                              DETECTED EMOTIONS
+                            </dt>
+                            <div className="flex flex-wrap gap-1">
+                              {sentimentData.overall_trends.common_emotions.slice(0, 3).map((emotion) => (
+                                <span
+                                  key={emotion.emotion}
+                                  className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-gray-700 dark:text-gray-300"
+                                >
+                                  {emotion.emotion}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div>
+                          <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                            SUMMARY
+                          </dt>
+                          <dd className="text-xs text-gray-600 dark:text-gray-400">
+                            {sentimentData.ticket_sentiment.summary}
+                          </dd>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                        Click "Analyze" to get sentiment analysis
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Ticket Info Card */}
               <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                 <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
@@ -1079,7 +1165,7 @@ export default function TicketDetailPage() {
                     <div>
                       <dt className="font-medium text-gray-500 dark:text-gray-400 mb-1">Category</dt>
                       <dd className="text-gray-900 dark:text-white">
-                        {ticket.category?.name} → {ticket.subCategory?.name}
+                        {ticket.category?.name} -> {ticket.subCategory?.name}
                       </dd>
                     </div>
                   </div>
