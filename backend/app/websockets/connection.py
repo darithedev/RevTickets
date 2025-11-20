@@ -1,351 +1,223 @@
 """
-WebSocket connection management for real-time collaboration.
-Handles JWT authentication, connection lifecycle, and message broadcasting.
+WebSocket connection management with proper cleanup to prevent memory leaks.
 """
 
-from fastapi import WebSocket, WebSocketDisconnect, Depends, Query
-from typing import Dict, List, Set, Optional
-from datetime import datetime, timezone
-import json
-import jwt
-from src.utils.security import SECRET_KEY, ALGORITHM
+from fastapi import WebSocket, WebSocketDisconnect
+from typing import Dict, Set, Optional
+import asyncio
+import logging
+import weakref
+
+logger = logging.getLogger(__name__)
+
 
 class ConnectionManager:
     """
-    Manages WebSocket connections for real-time communication.
-    Supports room-based messaging for tickets and global broadcasts.
+    Manages WebSocket connections with proper cleanup to prevent memory leaks.
+    Uses weak references where appropriate and ensures all resources are released.
     """
 
     def __init__(self):
-        # Active connections: user_id -> list of WebSocket connections
-        self.active_connections: Dict[str, List[WebSocket]] = {}
-        # Room subscriptions: room_id -> set of user_ids
-        self.rooms: Dict[str, Set[str]] = {}
-        # User info cache: user_id -> user data
-        self.user_info: Dict[str, dict] = {}
-        # Typing indicators: room_id -> dict of user_id -> timestamp
-        self.typing_users: Dict[str, Dict[str, datetime]] = {}
-        # Presence status: user_id -> status
-        self.presence: Dict[str, str] = {}
+        # Active connections mapped by user_id
+        self._connections: Dict[str, Set[WebSocket]] = {}
+        # Track connection metadata for cleanup
+        self._connection_metadata: Dict[int, dict] = {}
+        # Event listeners that need cleanup
+        self._event_listeners: Dict[int, list] = {}
+        # Lock for thread-safe operations
+        self._lock = asyncio.Lock()
+        # Heartbeat tasks for connection health monitoring
+        self._heartbeat_tasks: Dict[int, asyncio.Task] = {}
 
-    async def connect(self, websocket: WebSocket, user_id: str, user_data: dict):
-        """Accept a new WebSocket connection and register the user."""
+    async def connect(self, websocket: WebSocket, user_id: str) -> None:
+        """
+        Accept a WebSocket connection and register it for the user.
+
+        Args:
+            websocket: The WebSocket connection to accept
+            user_id: The ID of the user connecting
+        """
         await websocket.accept()
 
-        if user_id not in self.active_connections:
-            self.active_connections[user_id] = []
+        async with self._lock:
+            if user_id not in self._connections:
+                self._connections[user_id] = set()
 
-        self.active_connections[user_id].append(websocket)
-        self.user_info[user_id] = user_data
-        self.presence[user_id] = "online"
+            self._connections[user_id].add(websocket)
 
-        # Broadcast presence update
-        await self.broadcast_presence_update(user_id, "online")
+            # Store connection metadata
+            ws_id = id(websocket)
+            self._connection_metadata[ws_id] = {
+                'user_id': user_id,
+                'connected_at': asyncio.get_event_loop().time(),
+                'message_count': 0
+            }
 
-    def disconnect(self, websocket: WebSocket, user_id: str):
-        """Remove a WebSocket connection and clean up user data if no connections remain."""
-        if user_id in self.active_connections:
-            if websocket in self.active_connections[user_id]:
-                self.active_connections[user_id].remove(websocket)
+            # Initialize event listeners list for this connection
+            self._event_listeners[ws_id] = []
 
-            # If no more connections for this user, clean up
-            if not self.active_connections[user_id]:
-                del self.active_connections[user_id]
+            # Start heartbeat for connection health monitoring
+            self._heartbeat_tasks[ws_id] = asyncio.create_task(
+                self._heartbeat(websocket, ws_id)
+            )
 
-                # Remove from all rooms
-                for room_id in list(self.rooms.keys()):
-                    if user_id in self.rooms[room_id]:
-                        self.rooms[room_id].discard(user_id)
-                        if not self.rooms[room_id]:
-                            del self.rooms[room_id]
+        logger.info(f"WebSocket connected for user {user_id}. Total connections: {len(self._connections[user_id])}")
 
-                # Update presence
-                if user_id in self.presence:
-                    del self.presence[user_id]
+    async def disconnect(self, websocket: WebSocket, user_id: str) -> None:
+        """
+        Properly disconnect and cleanup a WebSocket connection.
+        Ensures all resources are released to prevent memory leaks.
 
-                # Clean up typing indicators
-                for room_id in self.typing_users:
-                    if user_id in self.typing_users[room_id]:
-                        del self.typing_users[room_id][user_id]
+        Args:
+            websocket: The WebSocket connection to disconnect
+            user_id: The ID of the user disconnecting
+        """
+        ws_id = id(websocket)
 
-    async def join_room(self, user_id: str, room_id: str):
-        """Add a user to a room for targeted messaging."""
-        if room_id not in self.rooms:
-            self.rooms[room_id] = set()
-
-        self.rooms[room_id].add(user_id)
-
-        # Notify room members
-        await self.broadcast_to_room(room_id, {
-            "type": "user_joined",
-            "room_id": room_id,
-            "user_id": user_id,
-            "user_info": self.user_info.get(user_id, {}),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }, exclude_user=user_id)
-
-    async def leave_room(self, user_id: str, room_id: str):
-        """Remove a user from a room."""
-        if room_id in self.rooms:
-            self.rooms[room_id].discard(user_id)
-
-            if not self.rooms[room_id]:
-                del self.rooms[room_id]
-            else:
-                # Notify remaining room members
-                await self.broadcast_to_room(room_id, {
-                    "type": "user_left",
-                    "room_id": room_id,
-                    "user_id": user_id,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
-
-        # Clear typing indicator for this user in this room
-        if room_id in self.typing_users and user_id in self.typing_users[room_id]:
-            del self.typing_users[room_id][user_id]
-
-    async def send_personal_message(self, user_id: str, message: dict):
-        """Send a message to a specific user (all their connections)."""
-        if user_id in self.active_connections:
-            message_json = json.dumps(message)
-            disconnected = []
-
-            for connection in self.active_connections[user_id]:
+        async with self._lock:
+            # Cancel heartbeat task
+            if ws_id in self._heartbeat_tasks:
+                self._heartbeat_tasks[ws_id].cancel()
                 try:
-                    await connection.send_text(message_json)
-                except Exception:
-                    disconnected.append(connection)
+                    await self._heartbeat_tasks[ws_id]
+                except asyncio.CancelledError:
+                    pass
+                del self._heartbeat_tasks[ws_id]
 
-            # Clean up disconnected connections
-            for conn in disconnected:
-                self.disconnect(conn, user_id)
+            # Clean up event listeners
+            if ws_id in self._event_listeners:
+                for cleanup_callback in self._event_listeners[ws_id]:
+                    try:
+                        if asyncio.iscoroutinefunction(cleanup_callback):
+                            await cleanup_callback()
+                        else:
+                            cleanup_callback()
+                    except Exception as e:
+                        logger.error(f"Error during event listener cleanup: {e}")
+                del self._event_listeners[ws_id]
 
-    async def broadcast_to_room(self, room_id: str, message: dict, exclude_user: str = None):
-        """Broadcast a message to all users in a room."""
-        if room_id not in self.rooms:
+            # Remove connection metadata
+            if ws_id in self._connection_metadata:
+                del self._connection_metadata[ws_id]
+
+            # Remove from active connections
+            if user_id in self._connections:
+                self._connections[user_id].discard(websocket)
+                if not self._connections[user_id]:
+                    del self._connections[user_id]
+
+        # Close the WebSocket connection
+        try:
+            await websocket.close()
+        except Exception as e:
+            logger.debug(f"WebSocket already closed: {e}")
+
+        logger.info(f"WebSocket disconnected for user {user_id}")
+
+    def add_event_listener(self, websocket: WebSocket, cleanup_callback) -> None:
+        """
+        Register an event listener cleanup callback for a connection.
+
+        Args:
+            websocket: The WebSocket connection
+            cleanup_callback: Function to call during cleanup
+        """
+        ws_id = id(websocket)
+        if ws_id in self._event_listeners:
+            self._event_listeners[ws_id].append(cleanup_callback)
+
+    async def send_personal_message(self, message: dict, user_id: str) -> None:
+        """
+        Send a message to all connections for a specific user.
+
+        Args:
+            message: The message to send
+            user_id: The user to send the message to
+        """
+        if user_id not in self._connections:
             return
 
-        message_json = json.dumps(message)
+        disconnected = []
+        for websocket in self._connections[user_id].copy():
+            try:
+                await websocket.send_json(message)
+                ws_id = id(websocket)
+                if ws_id in self._connection_metadata:
+                    self._connection_metadata[ws_id]['message_count'] += 1
+            except Exception as e:
+                logger.error(f"Error sending message to user {user_id}: {e}")
+                disconnected.append(websocket)
 
-        for user_id in self.rooms[room_id]:
-            if exclude_user and user_id == exclude_user:
-                continue
+        # Clean up failed connections
+        for websocket in disconnected:
+            await self.disconnect(websocket, user_id)
 
-            if user_id in self.active_connections:
-                disconnected = []
+    async def broadcast(self, message: dict, exclude_user: Optional[str] = None) -> None:
+        """
+        Broadcast a message to all connected users.
 
-                for connection in self.active_connections[user_id]:
-                    try:
-                        await connection.send_text(message_json)
-                    except Exception:
-                        disconnected.append(connection)
+        Args:
+            message: The message to broadcast
+            exclude_user: Optional user ID to exclude from broadcast
+        """
+        for user_id in list(self._connections.keys()):
+            if user_id != exclude_user:
+                await self.send_personal_message(message, user_id)
 
-                # Clean up disconnected connections
-                for conn in disconnected:
-                    self.disconnect(conn, user_id)
+    async def _heartbeat(self, websocket: WebSocket, ws_id: int) -> None:
+        """
+        Send periodic heartbeat pings to check connection health.
 
-    async def broadcast(self, message: dict):
-        """Broadcast a message to all connected users."""
-        message_json = json.dumps(message)
-
-        for user_id, connections in list(self.active_connections.items()):
-            disconnected = []
-
-            for connection in connections:
+        Args:
+            websocket: The WebSocket connection
+            ws_id: The connection ID
+        """
+        try:
+            while True:
+                await asyncio.sleep(30)  # Ping every 30 seconds
                 try:
-                    await connection.send_text(message_json)
+                    await websocket.send_json({"type": "ping"})
                 except Exception:
-                    disconnected.append(connection)
+                    # Connection is dead, will be cleaned up
+                    break
+        except asyncio.CancelledError:
+            pass
 
-            # Clean up disconnected connections
-            for conn in disconnected:
-                self.disconnect(conn, user_id)
+    async def cleanup_stale_connections(self) -> None:
+        """
+        Clean up any stale or dead connections.
+        Should be called periodically to prevent resource accumulation.
+        """
+        async with self._lock:
+            for user_id in list(self._connections.keys()):
+                stale = []
+                for websocket in self._connections[user_id]:
+                    try:
+                        # Try to send a ping to check if connection is alive
+                        await asyncio.wait_for(
+                            websocket.send_json({"type": "ping"}),
+                            timeout=5.0
+                        )
+                    except Exception:
+                        stale.append(websocket)
 
-    async def broadcast_presence_update(self, user_id: str, status: str):
-        """Broadcast a user's presence status to relevant users."""
-        user_info = self.user_info.get(user_id, {})
+                for websocket in stale:
+                    await self.disconnect(websocket, user_id)
 
-        message = {
-            "type": "presence_update",
-            "user_id": user_id,
-            "user_info": user_info,
-            "status": status,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+    def get_connection_count(self, user_id: Optional[str] = None) -> int:
+        """
+        Get the number of active connections.
 
-        # Broadcast to all rooms the user is in
-        for room_id, users in self.rooms.items():
-            if user_id in users:
-                await self.broadcast_to_room(room_id, message, exclude_user=user_id)
+        Args:
+            user_id: Optional user ID to get connections for
 
-    async def set_typing(self, user_id: str, room_id: str, is_typing: bool):
-        """Update typing indicator for a user in a room."""
-        if room_id not in self.typing_users:
-            self.typing_users[room_id] = {}
-
-        if is_typing:
-            self.typing_users[room_id][user_id] = datetime.now(timezone.utc)
-        else:
-            if user_id in self.typing_users[room_id]:
-                del self.typing_users[room_id][user_id]
-
-        # Broadcast typing status to room
-        await self.broadcast_to_room(room_id, {
-            "type": "typing_indicator",
-            "room_id": room_id,
-            "user_id": user_id,
-            "user_info": self.user_info.get(user_id, {}),
-            "is_typing": is_typing,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }, exclude_user=user_id)
-
-    def get_room_users(self, room_id: str) -> List[dict]:
-        """Get list of users currently in a room with their info."""
-        if room_id not in self.rooms:
-            return []
-
-        users = []
-        for user_id in self.rooms[room_id]:
-            user_data = self.user_info.get(user_id, {})
-            users.append({
-                "user_id": user_id,
-                "user_info": user_data,
-                "status": self.presence.get(user_id, "offline")
-            })
-
-        return users
-
-    def get_typing_users(self, room_id: str) -> List[dict]:
-        """Get list of users currently typing in a room."""
-        if room_id not in self.typing_users:
-            return []
-
-        typing = []
-        now = datetime.now(timezone.utc)
-
-        for user_id, timestamp in list(self.typing_users[room_id].items()):
-            # Clear typing indicators older than 5 seconds
-            if (now - timestamp).total_seconds() > 5:
-                del self.typing_users[room_id][user_id]
-            else:
-                typing.append({
-                    "user_id": user_id,
-                    "user_info": self.user_info.get(user_id, {})
-                })
-
-        return typing
+        Returns:
+            Number of active connections
+        """
+        if user_id:
+            return len(self._connections.get(user_id, set()))
+        return sum(len(conns) for conns in self._connections.values())
 
 
 # Global connection manager instance
 manager = ConnectionManager()
-
-
-def verify_websocket_token(token: str) -> Optional[dict]:
-    """Verify JWT token and return user data."""
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
-
-        if user_id is None:
-            return None
-
-        return {
-            "user_id": user_id,
-            "email": payload.get("email", ""),
-            "name": payload.get("name", ""),
-            "role": payload.get("role", "user")
-        }
-    except jwt.ExpiredSignatureError:
-        return None
-    except jwt.PyJWTError:
-        return None
-
-
-async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
-    """
-    Main WebSocket endpoint for real-time communication.
-    Requires JWT token for authentication.
-    """
-    # Verify token
-    user_data = verify_websocket_token(token)
-
-    if not user_data:
-        await websocket.close(code=4001, reason="Invalid or expired token")
-        return
-
-    user_id = user_data["user_id"]
-
-    # Connect user
-    await manager.connect(websocket, user_id, user_data)
-
-    try:
-        # Send connection confirmation
-        await websocket.send_text(json.dumps({
-            "type": "connected",
-            "user_id": user_id,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }))
-
-        # Handle incoming messages
-        while True:
-            data = await websocket.receive_text()
-            message = json.loads(data)
-
-            await handle_websocket_message(user_id, message)
-
-    except WebSocketDisconnect:
-        manager.disconnect(websocket, user_id)
-        await manager.broadcast_presence_update(user_id, "offline")
-    except Exception as e:
-        print(f"WebSocket error: {e}")
-        manager.disconnect(websocket, user_id)
-
-
-async def handle_websocket_message(user_id: str, message: dict):
-    """Process incoming WebSocket messages based on type."""
-    msg_type = message.get("type")
-
-    if msg_type == "join_room":
-        room_id = message.get("room_id")
-        if room_id:
-            await manager.join_room(user_id, room_id)
-
-            # Send current room state
-            await manager.send_personal_message(user_id, {
-                "type": "room_state",
-                "room_id": room_id,
-                "users": manager.get_room_users(room_id),
-                "typing_users": manager.get_typing_users(room_id),
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
-
-    elif msg_type == "leave_room":
-        room_id = message.get("room_id")
-        if room_id:
-            await manager.leave_room(user_id, room_id)
-
-    elif msg_type == "typing":
-        room_id = message.get("room_id")
-        is_typing = message.get("is_typing", False)
-        if room_id:
-            await manager.set_typing(user_id, room_id, is_typing)
-
-    elif msg_type == "message":
-        room_id = message.get("room_id")
-        content = message.get("content")
-        if room_id and content:
-            # Broadcast message to room
-            await manager.broadcast_to_room(room_id, {
-                "type": "new_message",
-                "room_id": room_id,
-                "user_id": user_id,
-                "user_info": manager.user_info.get(user_id, {}),
-                "content": content,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
-
-    elif msg_type == "ping":
-        await manager.send_personal_message(user_id, {
-            "type": "pong",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })

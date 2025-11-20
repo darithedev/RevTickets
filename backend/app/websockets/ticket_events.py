@@ -1,187 +1,243 @@
 """
-Ticket-specific WebSocket event handlers.
-Handles real-time ticket updates, comments, and status changes.
+Ticket event handling for WebSocket notifications with proper cleanup.
 """
 
-from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+from typing import Dict, Callable, List, Optional
+from fastapi import WebSocket
+import asyncio
+import logging
+import weakref
+
 from .connection import manager
 
+logger = logging.getLogger(__name__)
 
-class TicketEventHandler:
+
+class TicketEventManager:
     """
-    Handles ticket-related real-time events.
-    Broadcasts updates to relevant users when ticket data changes.
+    Manages ticket-related events and notifications with proper listener cleanup.
     """
 
-    @staticmethod
-    def get_ticket_room(ticket_id: str) -> str:
-        """Get the room ID for a specific ticket."""
-        return f"ticket:{ticket_id}"
+    def __init__(self):
+        # Event listeners by event type
+        self._listeners: Dict[str, List[tuple]] = {}
+        # Ticket subscriptions by ticket_id -> set of user_ids
+        self._ticket_subscriptions: Dict[str, set] = {}
+        # User subscriptions by user_id -> set of ticket_ids
+        self._user_subscriptions: Dict[str, set] = {}
+        # Lock for thread-safe operations
+        self._lock = asyncio.Lock()
 
-    @staticmethod
-    async def broadcast_ticket_update(ticket_id: str, update_type: str, data: dict):
-        """Broadcast a ticket update to all users viewing the ticket."""
-        room_id = TicketEventHandler.get_ticket_room(ticket_id)
+    async def subscribe_to_ticket(self, ticket_id: str, user_id: str, websocket: WebSocket) -> None:
+        """
+        Subscribe a user to ticket updates.
 
-        await manager.broadcast_to_room(room_id, {
-            "type": "ticket_update",
-            "update_type": update_type,
+        Args:
+            ticket_id: The ticket to subscribe to
+            user_id: The user subscribing
+            websocket: The user's WebSocket connection
+        """
+        async with self._lock:
+            # Add to ticket subscriptions
+            if ticket_id not in self._ticket_subscriptions:
+                self._ticket_subscriptions[ticket_id] = set()
+            self._ticket_subscriptions[ticket_id].add(user_id)
+
+            # Add to user subscriptions
+            if user_id not in self._user_subscriptions:
+                self._user_subscriptions[user_id] = set()
+            self._user_subscriptions[user_id].add(ticket_id)
+
+        # Register cleanup callback with connection manager
+        async def cleanup():
+            await self.unsubscribe_from_ticket(ticket_id, user_id)
+
+        manager.add_event_listener(websocket, cleanup)
+
+        logger.info(f"User {user_id} subscribed to ticket {ticket_id}")
+
+    async def unsubscribe_from_ticket(self, ticket_id: str, user_id: str) -> None:
+        """
+        Unsubscribe a user from ticket updates.
+
+        Args:
+            ticket_id: The ticket to unsubscribe from
+            user_id: The user unsubscribing
+        """
+        async with self._lock:
+            # Remove from ticket subscriptions
+            if ticket_id in self._ticket_subscriptions:
+                self._ticket_subscriptions[ticket_id].discard(user_id)
+                if not self._ticket_subscriptions[ticket_id]:
+                    del self._ticket_subscriptions[ticket_id]
+
+            # Remove from user subscriptions
+            if user_id in self._user_subscriptions:
+                self._user_subscriptions[user_id].discard(ticket_id)
+                if not self._user_subscriptions[user_id]:
+                    del self._user_subscriptions[user_id]
+
+        logger.info(f"User {user_id} unsubscribed from ticket {ticket_id}")
+
+    async def unsubscribe_user(self, user_id: str) -> None:
+        """
+        Unsubscribe a user from all tickets. Called during disconnect.
+
+        Args:
+            user_id: The user to unsubscribe
+        """
+        async with self._lock:
+            if user_id in self._user_subscriptions:
+                # Get all ticket subscriptions for this user
+                ticket_ids = list(self._user_subscriptions[user_id])
+
+                # Remove user from all ticket subscriptions
+                for ticket_id in ticket_ids:
+                    if ticket_id in self._ticket_subscriptions:
+                        self._ticket_subscriptions[ticket_id].discard(user_id)
+                        if not self._ticket_subscriptions[ticket_id]:
+                            del self._ticket_subscriptions[ticket_id]
+
+                # Clear user subscriptions
+                del self._user_subscriptions[user_id]
+
+        logger.info(f"User {user_id} unsubscribed from all tickets")
+
+    def add_listener(self, event_type: str, callback: Callable, websocket: Optional[WebSocket] = None) -> Callable:
+        """
+        Add an event listener with automatic cleanup registration.
+
+        Args:
+            event_type: The type of event to listen for
+            callback: The callback function to invoke
+            websocket: Optional WebSocket to register cleanup with
+
+        Returns:
+            A function to remove the listener
+        """
+        if event_type not in self._listeners:
+            self._listeners[event_type] = []
+
+        listener_entry = (callback, id(callback))
+        self._listeners[event_type].append(listener_entry)
+
+        # Create removal function
+        def remove_listener():
+            if event_type in self._listeners:
+                self._listeners[event_type] = [
+                    l for l in self._listeners[event_type]
+                    if l[1] != id(callback)
+                ]
+                if not self._listeners[event_type]:
+                    del self._listeners[event_type]
+
+        # Register cleanup with connection manager if websocket provided
+        if websocket:
+            manager.add_event_listener(websocket, remove_listener)
+
+        return remove_listener
+
+    def remove_listener(self, event_type: str, callback: Callable) -> None:
+        """
+        Remove a specific event listener.
+
+        Args:
+            event_type: The type of event
+            callback: The callback to remove
+        """
+        if event_type in self._listeners:
+            self._listeners[event_type] = [
+                l for l in self._listeners[event_type]
+                if l[1] != id(callback)
+            ]
+            if not self._listeners[event_type]:
+                del self._listeners[event_type]
+
+    async def emit(self, event_type: str, data: dict) -> None:
+        """
+        Emit an event to all registered listeners.
+
+        Args:
+            event_type: The type of event
+            data: The event data
+        """
+        if event_type not in self._listeners:
+            return
+
+        # Create a copy to avoid modification during iteration
+        listeners = self._listeners[event_type].copy()
+
+        for callback, _ in listeners:
+            try:
+                if asyncio.iscoroutinefunction(callback):
+                    await callback(data)
+                else:
+                    callback(data)
+            except Exception as e:
+                logger.error(f"Error in event listener for {event_type}: {e}")
+
+    async def notify_ticket_update(self, ticket_id: str, event_type: str, data: dict) -> None:
+        """
+        Notify all subscribers of a ticket update.
+
+        Args:
+            ticket_id: The ticket that was updated
+            event_type: The type of update (created, updated, commented, etc.)
+            data: The update data
+        """
+        message = {
+            "type": f"ticket_{event_type}",
             "ticket_id": ticket_id,
-            "data": data,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "data": data
+        }
+
+        # Notify subscribed users
+        if ticket_id in self._ticket_subscriptions:
+            for user_id in self._ticket_subscriptions[ticket_id].copy():
+                await manager.send_personal_message(message, user_id)
+
+        # Emit event to listeners
+        await self.emit(f"ticket_{event_type}", {
+            "ticket_id": ticket_id,
+            **data
         })
 
-    @staticmethod
-    async def on_comment_created(ticket_id: str, comment: dict, user_info: dict):
+        logger.info(f"Notified ticket update: {event_type} for ticket {ticket_id}")
+
+    async def notify_ticket_created(self, ticket_id: str, ticket_data: dict) -> None:
+        """Notify about a new ticket creation."""
+        await self.notify_ticket_update(ticket_id, "created", ticket_data)
+
+    async def notify_ticket_updated(self, ticket_id: str, changes: dict) -> None:
+        """Notify about ticket field updates."""
+        await self.notify_ticket_update(ticket_id, "updated", changes)
+
+    async def notify_ticket_commented(self, ticket_id: str, comment_data: dict) -> None:
+        """Notify about a new comment on a ticket."""
+        await self.notify_ticket_update(ticket_id, "commented", comment_data)
+
+    async def notify_ticket_assigned(self, ticket_id: str, agent_data: dict) -> None:
+        """Notify about ticket assignment."""
+        await self.notify_ticket_update(ticket_id, "assigned", agent_data)
+
+    async def notify_ticket_status_changed(self, ticket_id: str, status_data: dict) -> None:
+        """Notify about ticket status change."""
+        await self.notify_ticket_update(ticket_id, "status_changed", status_data)
+
+    def get_subscription_count(self, ticket_id: Optional[str] = None) -> int:
         """
-        Handle new comment creation event.
-        Broadcasts to all users viewing the ticket.
+        Get the number of subscriptions.
+
+        Args:
+            ticket_id: Optional ticket ID to get subscriptions for
+
+        Returns:
+            Number of subscriptions
         """
-        await TicketEventHandler.broadcast_ticket_update(
-            ticket_id,
-            "comment_created",
-            {
-                "comment": comment,
-                "user_info": user_info
-            }
-        )
-
-    @staticmethod
-    async def on_comment_updated(ticket_id: str, comment: dict, user_info: dict):
-        """Handle comment update event."""
-        await TicketEventHandler.broadcast_ticket_update(
-            ticket_id,
-            "comment_updated",
-            {
-                "comment": comment,
-                "user_info": user_info
-            }
-        )
-
-    @staticmethod
-    async def on_comment_deleted(ticket_id: str, comment_id: str, user_info: dict):
-        """Handle comment deletion event."""
-        await TicketEventHandler.broadcast_ticket_update(
-            ticket_id,
-            "comment_deleted",
-            {
-                "comment_id": comment_id,
-                "user_info": user_info
-            }
-        )
-
-    @staticmethod
-    async def on_status_changed(ticket_id: str, old_status: str, new_status: str, user_info: dict):
-        """Handle ticket status change event."""
-        await TicketEventHandler.broadcast_ticket_update(
-            ticket_id,
-            "status_changed",
-            {
-                "old_status": old_status,
-                "new_status": new_status,
-                "user_info": user_info
-            }
-        )
-
-    @staticmethod
-    async def on_assignment_changed(ticket_id: str, old_agent: Optional[dict], new_agent: Optional[dict], user_info: dict):
-        """Handle ticket assignment change event."""
-        await TicketEventHandler.broadcast_ticket_update(
-            ticket_id,
-            "assignment_changed",
-            {
-                "old_agent": old_agent,
-                "new_agent": new_agent,
-                "user_info": user_info
-            }
-        )
-
-    @staticmethod
-    async def on_priority_changed(ticket_id: str, old_priority: str, new_priority: str, user_info: dict):
-        """Handle ticket priority change event."""
-        await TicketEventHandler.broadcast_ticket_update(
-            ticket_id,
-            "priority_changed",
-            {
-                "old_priority": old_priority,
-                "new_priority": new_priority,
-                "user_info": user_info
-            }
-        )
-
-    @staticmethod
-    async def on_ticket_updated(ticket_id: str, changes: dict, user_info: dict):
-        """Handle generic ticket update event."""
-        await TicketEventHandler.broadcast_ticket_update(
-            ticket_id,
-            "ticket_updated",
-            {
-                "changes": changes,
-                "user_info": user_info
-            }
-        )
-
-    @staticmethod
-    async def notify_user(user_id: str, notification_type: str, data: dict):
-        """Send a notification to a specific user."""
-        await manager.send_personal_message(user_id, {
-            "type": "notification",
-            "notification_type": notification_type,
-            "data": data,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
-
-    @staticmethod
-    async def on_ticket_created(ticket: dict, user_info: dict):
-        """
-        Handle new ticket creation event.
-        Notifies relevant agents about new tickets.
-        """
-        # Broadcast to all connected users (agents will filter relevant ones)
-        await manager.broadcast({
-            "type": "ticket_created",
-            "ticket": ticket,
-            "user_info": user_info,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
-
-    @staticmethod
-    async def on_ticket_closed(ticket_id: str, resolution: str, user_info: dict):
-        """Handle ticket closure event."""
-        await TicketEventHandler.broadcast_ticket_update(
-            ticket_id,
-            "ticket_closed",
-            {
-                "resolution": resolution,
-                "user_info": user_info
-            }
-        )
-
-    @staticmethod
-    async def on_ticket_reopened(ticket_id: str, reason: str, user_info: dict):
-        """Handle ticket reopen event."""
-        await TicketEventHandler.broadcast_ticket_update(
-            ticket_id,
-            "ticket_reopened",
-            {
-                "reason": reason,
-                "user_info": user_info
-            }
-        )
-
-    @staticmethod
-    def get_ticket_viewers(ticket_id: str) -> list:
-        """Get list of users currently viewing a ticket."""
-        room_id = TicketEventHandler.get_ticket_room(ticket_id)
-        return manager.get_room_users(room_id)
-
-    @staticmethod
-    def get_typing_users_for_ticket(ticket_id: str) -> list:
-        """Get list of users currently typing in a ticket."""
-        room_id = TicketEventHandler.get_ticket_room(ticket_id)
-        return manager.get_typing_users(room_id)
+        if ticket_id:
+            return len(self._ticket_subscriptions.get(ticket_id, set()))
+        return sum(len(subs) for subs in self._ticket_subscriptions.values())
 
 
-# Export handler instance for convenience
-ticket_events = TicketEventHandler()
+# Global ticket event manager instance
+ticket_events = TicketEventManager()
