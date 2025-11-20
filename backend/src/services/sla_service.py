@@ -1,159 +1,211 @@
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Dict, Any, Optional
 from src.models.ticket import Ticket
-from src.models.enums import TicketPriority, TicketStatus
+from src.models.enums import TicketPriority
+from src.utils.business_date import (
+    add_business_days,
+    count_business_days,
+    get_business_hours_remaining,
+    is_business_day,
+    next_business_day
+)
+
+
+# SLA response time targets in business hours by priority
+SLA_RESPONSE_HOURS = {
+    TicketPriority.critical: 1,    # 1 business hour
+    TicketPriority.high: 4,        # 4 business hours
+    TicketPriority.medium: 8,      # 8 business hours (1 business day)
+    TicketPriority.low: 24,        # 24 business hours (3 business days)
+}
+
+# SLA resolution time targets in business days by priority
+SLA_RESOLUTION_DAYS = {
+    TicketPriority.critical: 1,    # 1 business day
+    TicketPriority.high: 2,        # 2 business days
+    TicketPriority.medium: 5,      # 5 business days
+    TicketPriority.low: 10,        # 10 business days
+}
 
 
 class SLAService:
-    # SLA times in hours by priority
-    SLA_TIMES = {
-        TicketPriority.critical: 2,
-        TicketPriority.high: 4,
-        TicketPriority.medium: 24,
-        TicketPriority.low: 48
-    }
+    """Service for SLA (Service Level Agreement) calculations with proper business day handling"""
 
     @staticmethod
-    def calculate_sla_due_date(priority: TicketPriority, created_at: datetime) -> datetime:
-        """Calculate SLA due date based on ticket priority"""
-        hours = SLAService.SLA_TIMES.get(priority, 24)  # Default to 24 hours
-        return created_at + timedelta(hours=hours)
-
-    @staticmethod
-    def get_sla_hours(priority: TicketPriority) -> int:
-        """Get SLA hours for a given priority"""
-        return SLAService.SLA_TIMES.get(priority, 24)
-
-    @staticmethod
-    async def setup_sla(ticket: Ticket) -> Ticket:
-        """Setup SLA for a new ticket"""
-        ticket.sla_due_date = SLAService.calculate_sla_due_date(
-            ticket.priority,
-            ticket.created_at
-        )
-        ticket.sla_breached = False
-        ticket.sla_paused_at = None
-        ticket.sla_pause_duration = 0
-        return ticket
-
-    @staticmethod
-    async def pause_sla(ticket: Ticket) -> Ticket:
-        """Pause SLA timer when waiting for customer"""
-        if not ticket.sla_paused_at:
-            ticket.sla_paused_at = datetime.now(timezone.utc)
-        return ticket
-
-    @staticmethod
-    async def resume_sla(ticket: Ticket) -> Ticket:
-        """Resume SLA timer when no longer waiting for customer"""
-        if ticket.sla_paused_at:
-            # Calculate pause duration
-            now = datetime.now(timezone.utc)
-            pause_duration = (now - ticket.sla_paused_at).total_seconds()
-            ticket.sla_pause_duration += int(pause_duration)
-
-            # Adjust SLA due date by the pause duration
-            if ticket.sla_due_date:
-                ticket.sla_due_date = ticket.sla_due_date + timedelta(seconds=pause_duration)
-
-            ticket.sla_paused_at = None
-        return ticket
-
-    @staticmethod
-    async def check_sla_breach(ticket: Ticket) -> bool:
-        """Check if ticket has breached SLA"""
-        if not ticket.sla_due_date:
-            return False
-
-        # Don't check if ticket is closed or resolved
-        if ticket.status in [TicketStatus.closed, TicketStatus.resolved]:
-            return ticket.sla_breached
-
-        # If paused, calculate effective time
-        now = datetime.now(timezone.utc)
-
-        if ticket.sla_paused_at:
-            # SLA is paused, check based on when it was paused
-            effective_now = ticket.sla_paused_at
-        else:
-            effective_now = now
-
-        return effective_now > ticket.sla_due_date
-
-    @staticmethod
-    async def update_sla_breach_status(ticket: Ticket) -> Ticket:
-        """Update the SLA breach status of a ticket"""
-        is_breached = await SLAService.check_sla_breach(ticket)
-        if is_breached and not ticket.sla_breached:
-            ticket.sla_breached = True
-        return ticket
-
-    @staticmethod
-    async def handle_status_change(ticket: Ticket, old_status: TicketStatus, new_status: TicketStatus) -> Ticket:
-        """Handle SLA timer pause/resume based on status changes"""
-        # Pause SLA when waiting for customer
-        if new_status == TicketStatus.waiting_for_customer:
-            ticket = await SLAService.pause_sla(ticket)
-        # Resume SLA when no longer waiting for customer
-        elif old_status == TicketStatus.waiting_for_customer and new_status != TicketStatus.waiting_for_customer:
-            ticket = await SLAService.resume_sla(ticket)
-
-        # Always check for breach
-        ticket = await SLAService.update_sla_breach_status(ticket)
-
-        return ticket
-
-    @staticmethod
-    async def get_all_active_tickets() -> list:
-        """Get all tickets that need SLA monitoring"""
-        active_statuses = [
-            TicketStatus.new,
-            TicketStatus.in_progress,
-            TicketStatus.waiting_for_customer,
-            TicketStatus.waiting_for_agent
-        ]
-
-        all_tickets = await Ticket.find_all().to_list()
-        return [t for t in all_tickets if t.status in active_statuses]
-
-    @staticmethod
-    async def monitor_and_update_breaches() -> dict:
-        """Monitor all active tickets and update breach status"""
-        active_tickets = await SLAService.get_all_active_tickets()
-
-        breached_count = 0
-        updated_count = 0
-
-        for ticket in active_tickets:
-            was_breached = ticket.sla_breached
-            ticket = await SLAService.update_sla_breach_status(ticket)
-
-            if ticket.sla_breached:
-                breached_count += 1
-                if not was_breached:
-                    await ticket.save()
-                    updated_count += 1
-
+    def get_sla_targets(priority: TicketPriority) -> Dict[str, Any]:
+        """
+        Get SLA targets for a given priority level.
+        
+        Args:
+            priority: The ticket priority level
+            
+        Returns:
+            Dictionary with response_hours and resolution_days targets
+        """
         return {
-            "total_active": len(active_tickets),
-            "breached": breached_count,
-            "newly_breached": updated_count
+            "response_hours": SLA_RESPONSE_HOURS.get(priority, 8),
+            "resolution_days": SLA_RESOLUTION_DAYS.get(priority, 5),
         }
 
     @staticmethod
-    def get_time_remaining(ticket: Ticket) -> Optional[timedelta]:
-        """Get time remaining until SLA breach"""
-        if not ticket.sla_due_date:
-            return None
+    def calculate_due_date(
+        created_at: datetime,
+        priority: TicketPriority,
+        is_response: bool = False
+    ) -> datetime:
+        """
+        Calculate the SLA due date based on priority and type.
+        
+        This method properly excludes weekends and holidays from the calculation.
+        
+        Args:
+            created_at: The ticket creation timestamp
+            priority: The ticket priority level
+            is_response: If True, calculate response due date; otherwise resolution due date
+            
+        Returns:
+            The calculated due date
+        """
+        if is_response:
+            # For response SLA, add business hours
+            target_hours = SLA_RESPONSE_HOURS.get(priority, 8)
+            
+            # Convert hours to business days (8 hours per business day)
+            business_days = target_hours // 8
+            remaining_hours = target_hours % 8
+            
+            # Add business days
+            if business_days > 0:
+                due_date = add_business_days(created_at, business_days)
+            else:
+                due_date = created_at
+            
+            # Add remaining hours
+            due_date = due_date + timedelta(hours=remaining_hours)
+            
+            # If we end up on a non-business day, move to next business day
+            if not is_business_day(due_date.date()):
+                due_date = next_business_day(due_date)
+                due_date = due_date.replace(hour=9, minute=0, second=0, microsecond=0)
+            
+        else:
+            # For resolution SLA, add business days
+            target_days = SLA_RESOLUTION_DAYS.get(priority, 5)
+            due_date = add_business_days(created_at, target_days)
+        
+        return due_date
 
-        if ticket.status in [TicketStatus.closed, TicketStatus.resolved]:
-            return None
-
+    @staticmethod
+    def calculate_sla_status(ticket: Ticket) -> Dict[str, Any]:
+        """
+        Calculate the current SLA status for a ticket.
+        
+        Args:
+            ticket: The ticket to check SLA status for
+            
+        Returns:
+            Dictionary with SLA status information including:
+            - response_due: Response due datetime
+            - resolution_due: Resolution due datetime
+            - response_breached: Whether response SLA is breached
+            - resolution_breached: Whether resolution SLA is breached
+            - response_remaining_hours: Hours remaining for response
+            - resolution_remaining_hours: Hours remaining for resolution
+        """
         now = datetime.now(timezone.utc)
+        created_at = ticket.created_at
+        
+        # Ensure created_at is timezone-aware
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        
+        priority = ticket.priority
+        
+        # Calculate due dates
+        response_due = SLAService.calculate_due_date(created_at, priority, is_response=True)
+        resolution_due = SLAService.calculate_due_date(created_at, priority, is_response=False)
+        
+        # Ensure due dates are timezone-aware
+        if response_due.tzinfo is None:
+            response_due = response_due.replace(tzinfo=timezone.utc)
+        if resolution_due.tzinfo is None:
+            resolution_due = resolution_due.replace(tzinfo=timezone.utc)
+        
+        # Calculate remaining business hours
+        response_remaining = get_business_hours_remaining(now, response_due)
+        resolution_remaining = get_business_hours_remaining(now, resolution_due)
+        
+        # Check if breached
+        response_breached = now > response_due
+        resolution_breached = now > resolution_due
+        
+        return {
+            "response_due": response_due,
+            "resolution_due": resolution_due,
+            "response_breached": response_breached,
+            "resolution_breached": resolution_breached,
+            "response_remaining_hours": max(0, response_remaining),
+            "resolution_remaining_hours": max(0, resolution_remaining),
+            "priority": priority.value if hasattr(priority, 'value') else str(priority),
+        }
 
-        if ticket.sla_paused_at:
-            # If paused, calculate from pause time
-            return ticket.sla_due_date - ticket.sla_paused_at
+    @staticmethod
+    def get_sla_summary(tickets: list) -> Dict[str, Any]:
+        """
+        Get an SLA summary for a list of tickets.
+        
+        Args:
+            tickets: List of tickets to analyze
+            
+        Returns:
+            Summary dictionary with breach counts and percentages
+        """
+        total = len(tickets)
+        if total == 0:
+            return {
+                "total": 0,
+                "response_breached": 0,
+                "resolution_breached": 0,
+                "on_track": 0,
+                "breach_percentage": 0,
+            }
+        
+        response_breached = 0
+        resolution_breached = 0
+        
+        for ticket in tickets:
+            status = SLAService.calculate_sla_status(ticket)
+            if status["response_breached"]:
+                response_breached += 1
+            if status["resolution_breached"]:
+                resolution_breached += 1
+        
+        on_track = total - max(response_breached, resolution_breached)
+        
+        return {
+            "total": total,
+            "response_breached": response_breached,
+            "resolution_breached": resolution_breached,
+            "on_track": on_track,
+            "breach_percentage": round((max(response_breached, resolution_breached) / total) * 100, 2),
+        }
 
-        remaining = ticket.sla_due_date - now
-        return remaining if remaining.total_seconds() > 0 else timedelta(0)
+    @staticmethod
+    def calculate_business_time_elapsed(start: datetime, end: datetime) -> Dict[str, float]:
+        """
+        Calculate elapsed business time between two datetimes.
+        
+        Args:
+            start: Start datetime
+            end: End datetime
+            
+        Returns:
+            Dictionary with business_hours and business_days elapsed
+        """
+        business_hours = get_business_hours_remaining(start, end)
+        business_days = count_business_days(start, end)
+        
+        return {
+            "business_hours": business_hours,
+            "business_days": business_days,
+        }

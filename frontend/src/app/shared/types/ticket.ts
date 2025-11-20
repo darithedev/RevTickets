@@ -26,9 +26,14 @@ export interface Ticket {
   createdAt: string;
   updatedAt: string;
   closedAt?: string;
-  // SLA fields
-  slaDueDate?: string;
-  slaBreached: boolean;
+  aiSummary?: string;
+  summaryGeneratedAt?: string;
+}
+
+export interface TicketSummaryResponse {
+  ticketId: string;
+  summary: string;
+  generatedAt: string;
 }
 
 export interface UserInfo {
@@ -72,6 +77,12 @@ export interface TicketStats {
   };
 }
 
+// Edit history for tracking comment modifications
+export interface CommentEditHistory {
+  editedAt: string;
+  previousContent: RichTextContent;
+}
+
 export interface Comment {
   id: string;
   ticket_id: string;
@@ -79,6 +90,9 @@ export interface Comment {
   content: RichTextContent;
   createdAt: string;
   updatedAt: string;
+  edited?: boolean;
+  editCount?: number;
+  editHistory?: CommentEditHistory[];
 }
 
 export interface CreateComment {
@@ -98,4 +112,9 @@ export interface TicketAssignment {
 
 export interface TicketClosure {
   resolution: string;
+}
+
+export interface ClosingCommentsResponse {
+  reason: string;
+  comment: string;
 }

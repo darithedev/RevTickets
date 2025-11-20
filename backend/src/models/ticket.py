@@ -13,25 +13,53 @@ class Ticket(Document):
     sub_category_id: Link[SubCategory] = Field(..., description="ID of the subcategory this ticket belongs to", alias="subCategoryId")
     user_id: Link[User] = Field(..., description="ID of the user who created the ticket", alias="userId")
     agent_id: Optional[Link[User]] = Field(None, description="ID of the agent assigned to the ticket (if any)", alias="agentId")
-    
+
     title: str = Field(..., description="Title of the ticket")
     description: str = Field(..., description="Detailed description of the ticket")
     content: RichTextContent = Field(..., description="Rich text content of the ticket with HTML, JSON, and plain text formats")
     tag_ids: Optional[List[Dict[str, str]]] = Field(default_factory=list, description="List of tag IDs associated with the ticket", alias="tagIds")
 
-    status: TicketStatus = Field(default=TicketStatus.new, description="Status of the ticket") 
+    status: TicketStatus = Field(default=TicketStatus.new, description="Status of the ticket")
     priority: TicketPriority = Field(default=TicketPriority.medium, description="Priority: low, medium, high, critical")
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="createdAt")
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="updatedAt")
     closed_at: Optional[datetime] = Field(None, alias="closedAt")
 
-    # SLA fields
-    sla_due_date: Optional[datetime] = Field(None, description="SLA due date based on priority", alias="slaDueDate")
-    sla_breached: bool = Field(default=False, description="Whether the SLA has been breached", alias="slaBreached")
-    sla_paused_at: Optional[datetime] = Field(None, description="When SLA timer was paused", alias="slaPausedAt")
-    sla_pause_duration: int = Field(default=0, description="Total pause duration in seconds", alias="slaPauseDuration")
+    # Version field for optimistic locking to prevent concurrent update conflicts
+    version: int = Field(default=1, description="Version number for optimistic locking")
 
     class Settings:
         name = "tickets"  # MongoDB collection name
 
+    async def optimistic_update(self, **updates) -> bool:
+        """
+        Perform an optimistic update with version checking.
+        Returns True if update succeeded, False if version conflict detected.
+        """
+        current_version = self.version
+
+        # Apply updates
+        for key, value in updates.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+        # Increment version and update timestamp
+        self.version = current_version + 1
+        self.updated_at = datetime.now(timezone.utc)
+
+        # Attempt atomic update with version check
+        result = await Ticket.find_one(
+            Ticket.id == self.id,
+            Ticket.version == current_version
+        ).update(
+            {"$set": {
+                **{k: v for k, v in updates.items() if hasattr(self, k)},
+                "version": self.version,
+                "updatedAt": self.updated_at
+            }}
+        )
+
+        return result.modified_count > 0 if result else False
+
+    

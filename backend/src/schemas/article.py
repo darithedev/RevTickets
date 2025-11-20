@@ -25,13 +25,17 @@ class ArticleResponse(BaseModel):
     category: CategoryResponse
     subcategory: SubCategoryResponse = Field(..., alias="subCategory")
     tags: List[TagBase] = Field(default_factory=list)
+    ai_generated_tags: List[str] = Field(default_factory=list, alias="aiGeneratedTags")
     vector_ids: List[str] = Field(default_factory=list, alias="vectorIds")
-    
+
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
 
     class Config:
         populate_by_name = True
+
+class GenerateTagsResponse(BaseModel):
+    tags: List[str]
 
 class ArticleUpdate(BaseModel):
     title: Optional[str] = None
