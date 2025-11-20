@@ -83,6 +83,21 @@ export default function TicketDetailPage() {
     }
   }, [ticketId, fetchTicketData]);
 
+  // Fetch sentiment analysis for agents
+  const fetchSentiment = useCallback(async () => {
+    if (!ticketId || user?.role !== 'agent') return;
+
+    try {
+      setLoadingSentiment(true);
+      const data = await sentimentApi.analyzeTicketFull(ticketId);
+      setSentimentData(data);
+    } catch (error) {
+      console.error('Failed to fetch sentiment:', error);
+    } finally {
+      setLoadingSentiment(false);
+    }
+  }, [ticketId, user?.role]);
+
   const handleAddComment = async () => {
     if (!ticketId || !newComment.text.trim()) return;
 
