@@ -43,24 +43,6 @@ export default function KnowledgeBasePage() {
   });
 
   // Search hook for KB articles
-  const searchArticles = useCallback(
-    (query: string) => articlesApi.search({ q: query }),
-    []
-  );
-
-  const {
-    query: searchQuery,
-    setQuery: setSearchQuery,
-    results: searchResults,
-    loading: searchLoading,
-    isSearching,
-  } = useDebounceSearch<Article[]>(searchArticles, 300);
-
-  const fetchArticles = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await articlesApi.getAll();
       setArticles(data);
       setRetryCount(0);
     } catch (err: any) {
