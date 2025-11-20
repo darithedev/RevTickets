@@ -1165,7 +1165,7 @@ export default function TicketDetailPage() {
                     <div>
                       <dt className="font-medium text-gray-500 dark:text-gray-400 mb-1">Category</dt>
                       <dd className="text-gray-900 dark:text-white">
-                        {ticket.category?.name} -> {ticket.subCategory?.name}
+                        {ticket.category?.name} {"->"} {ticket.subCategory?.name}
                       </dd>
                     </div>
                   </div>
