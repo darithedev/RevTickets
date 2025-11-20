@@ -39,6 +39,14 @@ class AIAssignmentResponse(BaseModel):
     agent_name: Optional[str] = None
     agent_email: Optional[str] = None
 
+class AIAssignmentResponse(BaseModel):
+    success: bool
+    ticket: Optional[TicketResponse] = None
+    assignment_reason: str
+    confidence: float
+    agent_name: Optional[str] = None
+    agent_email: Optional[str] = None
+
 @router.post("/", response_model=TicketResponse)
 async def create_ticket(ticket_data: TicketCreate, current_user: User = Depends(get_current_user)):
     print(f"POST /tickets - Creating ticket for user: {current_user.email}")
