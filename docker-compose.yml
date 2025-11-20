@@ -1,0 +1,148 @@
+version: '3.8'
+
+services:
+  # MongoDB database
+  mongodb:
+    image: mongo:7.0
+    container_name: revtickets-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=revtickets
+    networks:
+      - revtickets-network
+
+  # Redis for Celery broker and result backend
+  redis:
+    image: redis:7-alpine
+    container_name: revtickets-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - revtickets-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: revtickets-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/revtickets
+      - REDIS_URL=redis://redis:6379/0
+      - GUNICORN_WORKERS=2
+      - GUNICORN_THREADS=4
+      - GUNICORN_WORKER_CLASS=uvicorn.workers.UvicornWorker
+      - GUNICORN_TIMEOUT=120
+      - GUNICORN_KEEPALIVE=5
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - revtickets-network
+    volumes:
+      - ./backend:/app
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Celery worker for background tasks
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: revtickets-celery-worker
+    command: celery -A src.tasks.sla_monitor worker --loglevel=info --concurrency=2
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/revtickets
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - revtickets-network
+    volumes:
+      - ./backend:/app
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+
+  # Celery beat for scheduled tasks (SLA monitoring)
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: revtickets-celery-beat
+    command: celery -A src.tasks.sla_monitor beat --loglevel=info
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/revtickets
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - mongodb
+      - redis
+      - celery-worker
+    networks:
+      - revtickets-network
+    volumes:
+      - ./backend:/app
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 64M
+
+  # Next.js frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: revtickets-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - revtickets-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  revtickets-network:
+    driver: bridge

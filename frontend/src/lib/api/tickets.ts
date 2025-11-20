@@ -1,15 +1,17 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from '../../constants';
-import type { 
-  Ticket, 
-  CreateTicket, 
-  UpdateTicket, 
-  TicketAssignment, 
-  TicketClosure, 
+import type {
+  Ticket,
+  CreateTicket,
+  UpdateTicket,
+  TicketAssignment,
+  TicketClosure,
   TicketStats,
   Comment,
   CreateComment,
-  UpdateComment
+  UpdateComment,
+  TicketSummaryResponse,
+  ClosingCommentsResponse
 } from '../../app/shared/types';
 
 export const ticketsApi = {
@@ -82,6 +84,10 @@ export const ticketsApi = {
     return apiClient.patch(`/tickets/${ticketId}/status`, { status });
   },
 
+  async reopenTicket(ticketId: string, reason?: string): Promise<Ticket> {
+    return apiClient.post(`/tickets/${ticketId}/reopen`, { reason });
+  },
+
   async getComments(ticketId: string): Promise<Comment[]> {
     return apiClient.get(API_ENDPOINTS.TICKETS.COMMENTS(ticketId));
   },
@@ -96,5 +102,13 @@ export const ticketsApi = {
 
   async deleteComment(id: string): Promise<void> {
     return apiClient.delete(API_ENDPOINTS.COMMENTS.BY_ID(id));
+  },
+
+  async generateSummary(ticketId: string): Promise<TicketSummaryResponse> {
+    return apiClient.post(`/tickets/${ticketId}/summary`);
+  },
+
+  async generateClosingComments(ticketId: string): Promise<ClosingCommentsResponse> {
+    return apiClient.post(`/tickets/${ticketId}/closing_comments`);
   },
 };
