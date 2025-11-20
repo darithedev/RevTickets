@@ -69,6 +69,12 @@ export interface TicketStats {
   };
 }
 
+// Edit history for tracking comment modifications
+export interface CommentEditHistory {
+  editedAt: string;
+  previousContent: RichTextContent;
+}
+
 export interface Comment {
   id: string;
   ticket_id: string;
@@ -76,6 +82,9 @@ export interface Comment {
   content: RichTextContent;
   createdAt: string;
   updatedAt: string;
+  edited?: boolean;
+  editCount?: number;
+  editHistory?: CommentEditHistory[];
 }
 
 export interface CreateComment {

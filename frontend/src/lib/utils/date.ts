@@ -1,4 +1,4 @@
-import { format, parseISO, formatDistanceToNow } from 'date-fns';
+import { format, parseISO, formatDistanceToNow, differenceInHours, differenceInMinutes } from 'date-fns';
 
 export const formatDate = (date: string | Date): string => {
   if (!date) return 'N/A';
@@ -55,5 +55,43 @@ export const formatFullDateTime = (date: string | Date): string => {
   } catch (error) {
     console.error('Date formatting error:', error, 'Input:', date);
     return 'Invalid date';
+  }
+};
+
+// Comment editing time limit functions (24 hours)
+export const canEditComment = (createdAt: string): boolean => {
+  if (!createdAt) return false;
+  try {
+    const dateObj = typeof createdAt === 'string' ? parseISO(createdAt) : createdAt;
+    if (isNaN(dateObj.getTime())) return false;
+    const hoursSinceCreation = differenceInHours(new Date(), dateObj);
+    return hoursSinceCreation < 24;
+  } catch (error) {
+    console.error('Edit time check error:', error);
+    return false;
+  }
+};
+
+export const getEditTimeRemaining = (createdAt: string): string => {
+  if (!createdAt) return 'N/A';
+  try {
+    const dateObj = typeof createdAt === 'string' ? parseISO(createdAt) : createdAt;
+    if (isNaN(dateObj.getTime())) return 'N/A';
+
+    const now = new Date();
+    const editDeadline = new Date(dateObj.getTime() + 24 * 60 * 60 * 1000);
+
+    if (now >= editDeadline) return 'Edit window expired';
+
+    const hoursRemaining = differenceInHours(editDeadline, now);
+    const minutesRemaining = differenceInMinutes(editDeadline, now) % 60;
+
+    if (hoursRemaining > 0) {
+      return `${hoursRemaining}h ${minutesRemaining}m remaining`;
+    }
+    return `${minutesRemaining}m remaining`;
+  } catch (error) {
+    console.error('Edit time remaining error:', error);
+    return 'N/A';
   }
 };
