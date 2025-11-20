@@ -14,9 +14,14 @@ export interface Article {
   category: Category;
   subCategory: SubCategory;
   tags: Tag[];
+  aiGeneratedTags: string[];
   vectorIds: string[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface GenerateTagsResponse {
+  tags: string[];
 }
 
 export interface CreateArticle {

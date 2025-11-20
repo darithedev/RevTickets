@@ -177,6 +177,7 @@ class ArticleService:
             category=category_response,
             subcategory=subcategory_response,
             tags=tag_bases,
+            ai_generated_tags=article.ai_generated_tags or [],
             vector_ids=article.vector_ids or [],
             created_at=article.created_at,
             updated_at=article.updated_at,
