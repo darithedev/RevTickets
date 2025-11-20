@@ -58,7 +58,7 @@ class AssignmentService:
                         if category_id and agent_info.category.id == category_id:
                             category_match = True
 
-                # Get actual workload - DO NOT normalize or modify this value
+                # Get workload
                 active_ticket_count = await AssignmentService.get_agent_workload(user.id)
 
                 agents_data.append({
@@ -67,7 +67,7 @@ class AssignmentService:
                     "email": user.email,
                     "category_name": category_name,
                     "category_match": category_match,
-                    "active_ticket_count": active_ticket_count  # Raw count, not normalized
+                    "active_ticket_count": active_ticket_count
                 })
             except Exception as e:
                 print(f"Error processing agent info: {e}")
@@ -130,7 +130,7 @@ class AssignmentService:
                     for key, value in tag_dict.items():
                         ticket_data["tags"].append(f"{key}: {value}" if value else key)
 
-            # Get available agents with actual workload
+            # Get available agents
             agents_data = await AssignmentService.get_available_agents(category_id)
 
             if not agents_data:
