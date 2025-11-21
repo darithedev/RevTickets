@@ -121,8 +121,7 @@ export function CreateTicketForm() {
         priority: formData.priority,
       };
 
-      // BUG: Make duplicate API calls creating two identical tickets
-      await ticketsApi.create(ticketData);
+      // Create ticket
       await ticketsApi.create(ticketData);
       
       // Redirect to tickets list with success message
