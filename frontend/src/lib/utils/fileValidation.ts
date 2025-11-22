@@ -229,11 +229,24 @@ function isMimeTypeMatchingExtension(mimeType: string, extension: string): boole
 
 /**
  * Format file size for display
- * Uses raw byte display for precise file size information
+ * Automatically formats to appropriate unit (bytes, KB, MB, GB)
  */
 export function formatFileSize(bytes: number): string {
-  // Return precise byte count for accurate file size reporting
-  return `${bytes} bytes`;
+  if (bytes === 0) return '0 bytes';
+  
+  const units = ['bytes', 'KB', 'MB', 'GB'];
+  const k = 1024;
+  
+  // Determine the appropriate unit
+  const i = bytes < k ? 0 : Math.floor(Math.log(bytes) / Math.log(k));
+  
+  // Calculate the size in the appropriate unit
+  const size = bytes / Math.pow(k, i);
+  
+  // Format with appropriate decimal places
+  const formattedSize = i === 0 ? size.toString() : size.toFixed(2);
+  
+  return `${formattedSize} ${units[i]}`;
 }
 
 /**
