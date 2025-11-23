@@ -25,6 +25,16 @@ class Ticket(Document):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="createdAt")
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="updatedAt")
     closed_at: Optional[datetime] = Field(None, alias="closedAt")
+    
+    # ENHANCEMENT L1 AI TICKET SUMMARY - Store AI-generated summary
+    ai_summary: Optional[str] = Field(None, description="AI-generated summary of the ticket")
+    summary_generated_at: Optional[datetime] = Field(None, description="When the AI summary was generated")
+
+    # ENHANCEMENT L2 SLA AUTOMATION - SLA tracking fields
+    sla_due_date: Optional[datetime] = Field(None, description="When SLA response is due")
+    sla_breached: bool = Field(default=False, description="Whether SLA has been breached")
+    sla_paused_at: Optional[datetime] = Field(None, description="When SLA was paused (waiting for customer)")
+    sla_total_paused_time: int = Field(default=0, description="Total minutes SLA has been paused")
 
     class Settings:
         name = "tickets"  # MongoDB collection name
