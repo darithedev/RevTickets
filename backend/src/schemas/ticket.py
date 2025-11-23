@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 from src.models.enums import TicketStatus, TicketPriority
 from src.schemas.category import CategoryResponse
 from src.schemas.subcategory import SubCategoryResponse
@@ -40,6 +40,8 @@ class TicketUpdate(TicketBase):
     tagIds: Optional[List[str]]
 
 class TicketResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    
     id: str
     title: str
     description: str
@@ -56,17 +58,15 @@ class TicketResponse(BaseModel):
     updated_at: datetime = Field(alias="updatedAt")
     closed_at: Optional[datetime] = Field(None, alias="closedAt")
     
-    # ENHANCEMENT L1 AI TICKET SUMMARY - Include AI summary in response
-    ai_summary: Optional[str] = Field(None, description="AI-generated summary of the ticket")
-    summary_generated_at: Optional[datetime] = Field(None, description="When the AI summary was generated")
-
-    # ENHANCEMENT L2 SLA AUTOMATION - Include SLA fields in response
-    sla_due_date: Optional[datetime] = Field(None, description="When SLA response is due", alias="slaDueDate")
-    sla_breached: Optional[bool] = Field(None, description="Whether SLA has been breached", alias="slaBreached")
-    sla_paused_at: Optional[datetime] = Field(None, description="When SLA was paused", alias="slaPausedAt")
-    sla_total_paused_time: Optional[int] = Field(None, description="Total minutes SLA has been paused", alias="slaTotalPausedTime")
-
-    class Config:
-        populate_by_name = True
+    @field_serializer('created_at', 'updated_at', 'closed_at', when_used='always')
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        """Serialize datetime to ISO format with timezone (Z suffix for UTC)"""
+        if dt is None:
+            return None
+        # Ensure the datetime is timezone-aware (assume UTC if naive)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        # Return ISO format string with 'Z' suffix for UTC
+        return dt.isoformat().replace('+00:00', 'Z')
 
 

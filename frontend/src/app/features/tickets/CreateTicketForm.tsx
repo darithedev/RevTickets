@@ -133,32 +133,8 @@ export function CreateTicketForm() {
               ));
             });
 
-            uploadedFiles.push(uploadResponse.id);
-            
-            // Mark as uploaded
-            setAttachments(prev => prev.map((att, index) => 
-              index === i ? { 
-                ...att, 
-                uploaded: true, 
-                uploadProgress: 100,
-                id: uploadResponse.id,
-                url: uploadResponse.url
-              } : att
-            ));
-          } catch (error) {
-            console.error(`Failed to upload file ${attachment.name}:`, error);
-            setAttachments(prev => prev.map((att, index) => 
-              index === i ? { ...att, uploadError: `Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}` } : att
-            ));
-            uploadFailed = true;
-            setErrors({ submit: `Failed to upload file: ${attachment.name}. Please try again.` });
-            return; // Stop processing and don't create ticket
-          }
-        } else if (attachment.id) {
-          // File already uploaded
-          uploadedFiles.push(attachment.id);
-        }
-      }
+      // Create ticket
+      await ticketsApi.create(ticketData);
       
       // Only proceed if no upload failures
       if (!uploadFailed) {
