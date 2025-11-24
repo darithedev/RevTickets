@@ -60,7 +60,7 @@
 | ID | Task Name | Description | Branch | Assignee | Status | Priority | PR # | Est. Hours | Notes |
 |---|---|---|---|---|---|---|---|---|---|
 | L1-E1 | Comment Editing | Allow users to edit comments within 24 hours with edit history | `enhancement-l1-comment-editing` | Safa| Completed | Medium |? | 6-8 |Was already completed by Ashoka Shringla! |
-| L1-E2 | Ticket Reopening | Enable reopening resolved tickets within 10 business days | `enhancement-l1-ticket-reopening` |Safa | In Progress | Medium | | 8-10 | |
+| L1-E2 | Ticket Reopening | Enable reopening resolved tickets within 10 business days | `enhancement-l1-ticket-reopening` |Safa | In Review | Medium |8 | 8-10 | |
 | L1-E3 | KB Title Search | Frontend search interface for Knowledge Base articles | `enhancement-l1-kb-title-search` | | Not Started | Medium | | 6-8 | |
 | L1-E4 | AI Ticket Summary | AI-powered summaries for long ticket conversations | `enhancement-l1-ai-ticket-summary` | | Not Started | Low | | 8-10 | Requires Google API Key |
 | L1-E5 | AI Closing Suggestions | AI-generated closing comment suggestions for agents | `enhancement-l1-ai-closing-suggestions` | | Not Started | Low | | 8-10 | Requires Google API Key |
