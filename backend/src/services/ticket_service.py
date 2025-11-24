@@ -100,6 +100,7 @@ class TicketService:
             created_at=ticket.created_at,
             updated_at=ticket.updated_at,
             closed_at=ticket.closed_at,
+            reopen_history=ticket.reopen_history if ticket.reopen_history else [],
             category=category,
             sub_category=subcategory,
             tag_ids=tag_data,
@@ -503,13 +504,11 @@ class TicketService:
             ticket.reopen_history = []
         ticket.reopen_history.append(reopen_event)
         
-        # Clear closed_at timestamp
-        ticket.closed_at = None
-        
-        # Update the ticket
+        # Save the history first
         await ticket.save()
         
-        return await TicketService.update_ticket_status(ticket_id, TicketStatus.new)
+        # Change status to in_progress (valid transition from closed/resolved)
+        return await TicketService.update_ticket_status(ticket_id, TicketStatus.in_progress)
 
     @staticmethod
     async def get_queue_tickets(current_user: User) -> List[TicketResponse]:

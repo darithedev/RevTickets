@@ -13,8 +13,8 @@ export interface RichTextContent {
 }
 
 export interface ReopenEvent {
-  reopened_at: string;
-  previous_status: TicketStatus;
+  reopenedAt: string;
+  previousStatus: TicketStatus;
 }
 
 export interface Ticket {

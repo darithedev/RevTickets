@@ -39,6 +39,13 @@ class TicketCreate(BaseModel):
 class TicketUpdate(TicketBase):
     tagIds: Optional[List[str]]
 
+class ReopenEvent(BaseModel):
+    reopened_at: datetime = Field(alias="reopenedAt")
+    previous_status: str = Field(alias="previousStatus")
+
+    class Config:
+        populate_by_name = True
+
 class TicketResponse(BaseModel):
     id: str
     title: str
@@ -55,6 +62,7 @@ class TicketResponse(BaseModel):
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     closed_at: Optional[datetime] = Field(None, alias="closedAt")
+    reopen_history: Optional[List[ReopenEvent]] = Field(default_factory=list, alias="reopenHistory")
 
     class Config:
         populate_by_name = True
