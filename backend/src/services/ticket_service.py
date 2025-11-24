@@ -488,7 +488,28 @@ class TicketService:
                 detail="Ticket cannot be reopened. Either it's not closed/resolved or more than 10 business days have passed."
             )
         
-        return await TicketService.update_ticket_status(ticket_id, TicketStatus.in_progress)
+        # Get the ticket to record reopen history
+        ticket = await Ticket.get(ticket_id)
+        if not ticket:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+        
+        # Add reopen event to history
+        reopen_event = {
+            "reopened_at": datetime.now(timezone.utc),
+            "previous_status": ticket.status.value
+        }
+        
+        if ticket.reopen_history is None:
+            ticket.reopen_history = []
+        ticket.reopen_history.append(reopen_event)
+        
+        # Clear closed_at timestamp
+        ticket.closed_at = None
+        
+        # Update the ticket
+        await ticket.save()
+        
+        return await TicketService.update_ticket_status(ticket_id, TicketStatus.new)
 
     @staticmethod
     async def get_queue_tickets(current_user: User) -> List[TicketResponse]:

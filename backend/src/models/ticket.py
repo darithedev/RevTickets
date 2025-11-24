@@ -25,6 +25,7 @@ class Ticket(Document):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="createdAt")
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), alias="updatedAt")
     closed_at: Optional[datetime] = Field(None, alias="closedAt")
+    reopen_history: Optional[List[Dict]] = Field(default_factory=list, description="History of ticket reopenings with timestamps", alias="reopenHistory")
 
     class Settings:
         name = "tickets"  # MongoDB collection name

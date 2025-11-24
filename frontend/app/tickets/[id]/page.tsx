@@ -416,6 +416,34 @@ export default function TicketDetailPage() {
                     />
                   </div>
                 </div>
+
+                {/* ENHANCEMENT L1 TICKET REOPENING - Reopen History Timeline */}
+                {ticket.reopenHistory && ticket.reopenHistory.length > 0 && (
+                  <div className="mt-6">
+                    <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3">Reopening History</h4>
+                    <div className="bg-orange-50 dark:bg-orange-900/10 rounded-lg p-4 border border-orange-200 dark:border-orange-800">
+                      <div className="space-y-3">
+                        {ticket.reopenHistory.map((event, index) => (
+                          <div key={index} className="flex items-start space-x-3">
+                            <div className="flex-shrink-0 mt-1">
+                              <RotateCcw className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm text-gray-900 dark:text-gray-100">
+                                <span className="font-medium">Ticket reopened</span>
+                                <span className="text-gray-600 dark:text-gray-400"> from </span>
+                                <span className="font-medium capitalize">{event.previous_status.replace('_', ' ')}</span>
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                {formatFullDateTime(event.reopened_at)}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Comments Section */}

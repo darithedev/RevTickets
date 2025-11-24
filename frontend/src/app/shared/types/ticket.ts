@@ -12,6 +12,11 @@ export interface RichTextContent {
   text: string;
 }
 
+export interface ReopenEvent {
+  reopened_at: string;
+  previous_status: TicketStatus;
+}
+
 export interface Ticket {
   id: string;
   title: string;
@@ -26,6 +31,7 @@ export interface Ticket {
   createdAt: string;
   updatedAt: string;
   closedAt?: string;
+  reopenHistory?: ReopenEvent[];
 }
 
 export interface UserInfo {
