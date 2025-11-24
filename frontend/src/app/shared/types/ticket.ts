@@ -32,6 +32,14 @@ export interface Ticket {
   updatedAt: string;
   closedAt?: string;
   reopenHistory?: ReopenEvent[];
+  // ENHANCEMENT L1 AI TICKET SUMMARY - Add AI summary fields
+  aiSummary?: string;
+  summaryGeneratedAt?: string;
+  // ENHANCEMENT L2 SLA AUTOMATION - Add SLA fields
+  slaDueDate?: string;
+  slaBreached?: boolean;
+  slaPausedAt?: string;
+  slaTotalPausedTime?: number;
 }
 
 export interface UserInfo {
@@ -80,8 +88,18 @@ export interface Comment {
   ticket_id: string;
   user: UserInfo;
   content: RichTextContent;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string; // Changed from created_at to match backend alias
+  updatedAt: string; // Changed from updated_at to match backend alias
+  // ENHANCEMENT L1 COMMENT EDITING - Add edit tracking fields
+  edited?: boolean;
+  edit_count?: number;
+  edit_history?: CommentEditHistory[];
+}
+
+// ENHANCEMENT L1 COMMENT EDITING - Edit history tracking
+export interface CommentEditHistory {
+  edited_at: string;
+  previous_content?: RichTextContent;
 }
 
 export interface CreateComment {
@@ -90,6 +108,15 @@ export interface CreateComment {
 
 export interface UpdateComment {
   content: RichTextContent;
+}
+
+// ENHANCEMENT L1 AI TICKET SUMMARY - AI summary types
+export interface TicketSummaryResponse {
+  summary: string;
+}
+
+export interface ClosingCommentsResponse {
+  suggestions: string[];
 }
 
 export type CreateTicket = CreateTicketRequest;
@@ -101,4 +128,10 @@ export interface TicketAssignment {
 
 export interface TicketClosure {
   resolution: string;
+}
+
+// ENHANCEMENT L1 AI CLOSING SUGGESTIONS - AI closing suggestion types
+export interface ClosingCommentsResponse {
+  reason: string;
+  comment: string;
 }

@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict, field_serializer
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 from src.models.enums import TicketStatus, TicketPriority
 from src.schemas.category import CategoryResponse
 from src.schemas.subcategory import SubCategoryResponse
@@ -40,13 +40,23 @@ class TicketUpdate(TicketBase):
     tagIds: Optional[List[str]]
 
 class ReopenEvent(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    
     reopened_at: datetime = Field(alias="reopenedAt")
     previous_status: str = Field(alias="previousStatus")
-
-    class Config:
-        populate_by_name = True
+    
+    @field_serializer('reopened_at', when_used='always')
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        """Serialize datetime to ISO format with timezone (Z suffix for UTC)"""
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat().replace('+00:00', 'Z')
 
 class TicketResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    
     id: str
     title: str
     description: str
@@ -63,8 +73,14 @@ class TicketResponse(BaseModel):
     updated_at: datetime = Field(alias="updatedAt")
     closed_at: Optional[datetime] = Field(None, alias="closedAt")
     reopen_history: Optional[List[ReopenEvent]] = Field(default_factory=list, alias="reopenHistory")
-
-    class Config:
-        populate_by_name = True
-
-
+    
+    @field_serializer('created_at', 'updated_at', 'closed_at', when_used='always')
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        """Serialize datetime to ISO format with timezone (Z suffix for UTC)"""
+        if dt is None:
+            return None
+        # Ensure the datetime is timezone-aware (assume UTC if naive)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        # Return ISO format string with 'Z' suffix for UTC
+        return dt.isoformat().replace('+00:00', 'Z')

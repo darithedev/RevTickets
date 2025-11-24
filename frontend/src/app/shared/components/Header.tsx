@@ -84,13 +84,21 @@ export function Header({ onToggleSidebar }: HeaderProps) {
             <span className="block truncate text-sm text-gray-500 dark:text-gray-400">{user.email}</span>
             <span className="block text-xs text-orange-600 dark:text-orange-400 capitalize">{user.role}</span>
           </DropdownHeader>
-          <DropdownItem className="hover:bg-orange-50 dark:hover:bg-orange-900/20">
-            Profile
-          </DropdownItem>
-          <DropdownItem className="hover:bg-orange-50 dark:hover:bg-orange-900/20">
-            Settings
-          </DropdownItem>
-          <DropdownDivider />
+          {user.role === 'agent' && (
+            <>
+              <DropdownItem className="hover:bg-orange-50 dark:hover:bg-orange-900/20">
+                <Link href="/profile" className="block w-full">
+                  Profile
+                </Link>
+              </DropdownItem>
+              <DropdownItem className="hover:bg-orange-50 dark:hover:bg-orange-900/20">
+                <Link href="/profile/edit" className="block w-full">
+                  Settings
+                </Link>
+              </DropdownItem>
+              <DropdownDivider />
+            </>
+          )}
           <DropdownItem 
             className="hover:bg-orange-50 dark:hover:bg-orange-900/20"
             onClick={handleLogout}
