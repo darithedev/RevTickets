@@ -5,14 +5,14 @@ import { useParams } from 'next/navigation';
 import { Breadcrumb, BreadcrumbItem, Button, Avatar, Textarea } from 'flowbite-react';
 import { MessageCircle, AlertCircle, Edit3, CheckCircle2, XCircle, Home, RotateCcw, Brain, Sparkles } from 'lucide-react';
 import Link from 'next/link';
-import { MainLayout, ProtectedRoute, SLAIndicator } from '../../../src/app/shared/components';
-import { LoadingSpinner } from '../../../src/app/shared/components';
-import { RichTextEditor } from '../../../src/app/shared/components/RichTextEditor';
-import { ticketsApi } from '../../../src/lib/api';
+import { MainLayout, ProtectedRoute, SLAIndicator } from '@/src/app/shared/components';
+import { LoadingSpinner } from '@/src/app/shared/components';
+import { RichTextEditor } from '@/src/app/shared/components';
+import { ticketsApi } from '@/src/lib/api';
 import { formatFullDateTime, canEditComment, getEditTimeRemaining, canReopenTicket, getReopenTimeRemaining } from '../../../src/lib/utils';
-import { useAuth } from '../../../src/contexts/AuthContext';
+import { useAuth } from '@/src/contexts';
 import type { Ticket, Comment, CreateComment, RichTextContent, TicketStatus, ClosingCommentsResponse } from '../../../src/app/shared/types';
-import { createEmptyRichText, convertLegacyContent } from '../../../src/lib/utils';
+import { createEmptyRichText, convertLegacyContent } from '@/src/lib/utils';
 
 interface ConflictInfo {
   message: string;
@@ -33,7 +33,7 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState<RichTextContent>(createEmptyRichText());
   const [submittingComment, setSubmittingComment] = useState(false);
-  
+
   // Status management states
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [showCloseForm, setShowCloseForm] = useState(false);
@@ -106,11 +106,11 @@ export default function TicketDetailPage() {
       const commentData: CreateComment = {
         content: newComment,
       };
-      
+
       const newCommentData = await ticketsApi.createComment(ticketId, commentData);
       setComments([...comments, newCommentData]);
       setNewComment(createEmptyRichText());
-      
+
       // Refresh ticket data to get updated status if it changed
       // (e.g., when user responds to a ticket that was waiting for customer)
       const updatedTicket = await ticketsApi.getById(ticketId);
@@ -338,28 +338,6 @@ export default function TicketDetailPage() {
     }
   };
 
-  // AI closing suggestion handlers
-  const handleGenerateClosingSuggestion = async () => {
-    if (!ticketId) return;
-
-    try {
-      setGeneratingSuggestion(true);
-      const suggestion = await ticketsApi.generateClosingComments(ticketId);
-      setClosingSuggestion(suggestion);
-    } catch (error) {
-      console.error('Failed to generate closing suggestion:', error);
-    } finally {
-      setGeneratingSuggestion(false);
-    }
-  };
-
-  const handleApplySuggestion = () => {
-    if (closingSuggestion) {
-      setClosingComment(closingSuggestion.comment);
-    }
-  };
-
-
 
   if (loading) {
     return (
@@ -465,13 +443,13 @@ export default function TicketDetailPage() {
                         const currentIndex = array.findIndex(s => s.status === ticket.status);
                         const isCompleted = index < currentIndex;
                         const isCurrent = step.status === ticket.status;
-                        
+
                         return (
                           <div key={step.status} className="flex flex-col items-center relative z-10">
                             {/* Step Circle */}
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all duration-300 ${
-                              isCompleted 
-                                ? 'bg-blue-600 border-blue-600 text-white' 
+                              isCompleted
+                                ? 'bg-blue-600 border-blue-600 text-white'
                                 : isCurrent
                                 ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200'
                                 : 'bg-white border-gray-300 text-gray-400 dark:bg-gray-800 dark:border-gray-600'
@@ -484,11 +462,11 @@ export default function TicketDetailPage() {
                                 <span className="text-xs font-bold">{index + 1}</span>
                               )}
                             </div>
-                            
+
                             {/* Step Label */}
                             <div className={`mt-2 text-xs font-medium text-center max-w-20 ${
-                              isCompleted || isCurrent 
-                                ? 'text-blue-600 dark:text-blue-400' 
+                              isCompleted || isCurrent
+                                ? 'text-blue-600 dark:text-blue-400'
                                 : 'text-gray-500 dark:text-gray-400'
                             }`}>
                               {step.label}
@@ -496,10 +474,10 @@ export default function TicketDetailPage() {
                           </div>
                         );
                       })}
-                      
+
                       {/* Progress Line */}
                       <div className="absolute top-4 left-4 right-4 h-0.5 bg-gray-200 dark:bg-gray-700 -z-0">
-                        <div 
+                        <div
                           className="h-full bg-blue-600 transition-all duration-500 ease-out"
                           style={{
                             width: `${(([
@@ -663,7 +641,7 @@ export default function TicketDetailPage() {
                     <span className="text-sm text-gray-500 dark:text-gray-400">({comments.length})</span>
                   </div>
                 </div>
-                
+
                 {/* Comments List */}
                 <div className="px-6 py-4">
                   <div className="space-y-6 mb-8">
@@ -894,7 +872,7 @@ export default function TicketDetailPage() {
                         Start Work
                       </Button>
                     )}
-                    
+
                     {ticket.status === 'in_progress' && (
                       <>
                         <Button
@@ -917,7 +895,7 @@ export default function TicketDetailPage() {
                         </Button>
                       </>
                     )}
-                    
+
                     {(ticket.status === 'waiting_for_customer' || ticket.status === 'waiting_for_agent') && (
                       <Button
                         size="sm"

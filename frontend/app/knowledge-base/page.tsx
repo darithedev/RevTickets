@@ -43,12 +43,6 @@ export default function KnowledgeBasePage() {
   });
 
   // Search hook for KB articles
-      setArticles(data);
-      setRetryCount(0);
-    } catch (err: any) {
-      console.error('Failed to fetch articles:', err);
-
-      // Implement retry with exponential backoff
       if (retry < MAX_RETRIES) {
         const delay = Math.pow(2, retry) * 1000; // 1s, 2s, 4s
         setRetryCount(retry + 1);
