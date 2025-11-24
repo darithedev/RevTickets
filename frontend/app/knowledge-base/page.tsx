@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Button, Card, Table, TableHead, TableHeadCell, TableRow, TableCell, TableBody, TextInput } from 'flowbite-react';
-import { Plus, BookOpen, Calendar, Search, X } from 'lucide-react';
+import { Button, Card, Table, TableHead, TableHeadCell, TableRow, TableCell, TableBody, TextInput, Alert } from 'flowbite-react';
+import { Plus, BookOpen, Calendar, Search, X, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MainLayout, ProtectedRoute } from '../../src/app/shared/components';
@@ -10,6 +10,7 @@ import { LoadingSpinner } from '../../src/app/shared/components';
 import { articlesApi } from '../../src/lib/api';
 import { formatFullDateTime } from '../../src/lib/utils';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { useDebounceSearch } from '../../src/app/shared/hooks/useDebounceSearch';
 import type { Article } from '../../src/app/shared/types';
 import { getRichTextDisplay } from '../../src/lib/utils';
 
@@ -18,11 +19,21 @@ export default function KnowledgeBasePage() {
   const { user } = useAuth();
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
-  // ENHANCEMENT L1 KB TITLE SEARCH - Search functionality state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Article[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [showSearchResults, setShowSearchResults] = useState(false);
+  
+  // Use the debounced search hook
+  const {
+    query: searchQuery,
+    setQuery: setSearchQuery,
+    results: searchResults,
+    isSearching,
+    error: searchError,
+    hasSearched,
+    clearSearch,
+  } = useDebounceSearch({
+    searchFn: (q) => articlesApi.search({ q }),
+    delay: 300,
+    minLength: 2, // Require at least 2 characters
+  });
 
   const fetchArticles = useCallback(async () => {
     try {
@@ -44,48 +55,9 @@ export default function KnowledgeBasePage() {
     router.push(`/knowledge-base/${articleId}`);
   };
 
-  // ENHANCEMENT L1 KB TITLE SEARCH - Search function with BUG
-  const handleSearch = useCallback(async (query: string) => {
-    if (!query.trim()) {
-      setShowSearchResults(false);
-      setSearchResults([]);
-      return;
-    }
-
-    try {
-      setIsSearching(true);
-      // BUG: Always return empty results regardless of query
-      const results = await articlesApi.search({ q: query });
-      // const results: Article[] = [];
-      setSearchResults(results);
-      setShowSearchResults(true);
-    } catch (error) {
-      console.error('Failed to search articles:', error);
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  }, []);
-
-  // ENHANCEMENT L1 KB TITLE SEARCH - Debounced search effect
-  useEffect(() => {
-    const debounceTimer = setTimeout(() => {
-      if (searchQuery) {
-        handleSearch(searchQuery);
-      }
-    }, 300);
-
-    return () => clearTimeout(debounceTimer);
-  }, [searchQuery, handleSearch]);
-
-  const clearSearch = () => {
-    setSearchQuery('');
-    setSearchResults([]);
-    setShowSearchResults(false);
-  };
-
-  // ENHANCEMENT L1 KB TITLE SEARCH - Show search results when searching, all articles otherwise
-  const displayArticles = showSearchResults ? searchResults : articles;
+  // Show search results when searching, all articles otherwise
+  const displayArticles = hasSearched ? searchResults : articles;
+  const showingSearchResults = hasSearched && searchQuery.trim().length >= 2;
 
   if (loading) {
     return (
@@ -120,13 +92,13 @@ export default function KnowledgeBasePage() {
             </div>
           </div>
 
-          {/* ENHANCEMENT L1 KB TITLE SEARCH - Search interface */}
+          {/* Search Interface */}
           <Card>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <TextInput
                 type="text"
-                placeholder="Search knowledge base articles..."
+                placeholder="Search knowledge base articles... (min 2 characters)"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 pr-10"
@@ -135,17 +107,30 @@ export default function KnowledgeBasePage() {
                 <button
                   onClick={clearSearch}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 hover:text-gray-600"
+                  aria-label="Clear search"
                 >
                   <X className="h-4 w-4" />
                 </button>
               )}
             </div>
+            
+            {/* Search Status */}
             {isSearching && (
-              <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              <div className="mt-2 text-sm text-gray-500 dark:text-gray-400 flex items-center">
+                <div className="animate-spin rounded-full h-3 w-3 border-2 border-gray-500 border-t-transparent mr-2"></div>
                 Searching...
               </div>
             )}
-            {showSearchResults && (
+            
+            {/* Search Error */}
+            {searchError && (
+              <Alert color="failure" icon={AlertCircle} className="mt-2">
+                <span className="font-medium">Search failed:</span> {searchError}
+              </Alert>
+            )}
+            
+            {/* Search Results Info */}
+            {showingSearchResults && !isSearching && !searchError && (
               <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
                 Found {searchResults.length} article{searchResults.length !== 1 ? 's' : ''} for &ldquo;{searchQuery}&rdquo;
                 <button
@@ -165,7 +150,7 @@ export default function KnowledgeBasePage() {
               <div className="text-center py-12">
                 <div className="text-gray-500 dark:text-gray-400">
                   <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  {showSearchResults ? (
+                  {showingSearchResults ? (
                     <>
                       <h3 className="text-lg font-medium mb-2">No articles found</h3>
                       <p className="text-sm">No articles match your search for &ldquo;{searchQuery}&rdquo;</p>
