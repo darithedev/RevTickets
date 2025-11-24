@@ -47,11 +47,11 @@
 
 | ID | Task Name | Description | Branch | Assignee | Status | Priority | PR # | Notes |
 |---|---|---|---|---|---|---|---|---|
-| L1-B1 | Navigation Broken Links | Sidebar navigation links return 404 errors for valid routes | `bug-l1-navigation-broken-links` | | Not Started | High | | |
-| L1-B2 | Category Update Failure | Category edit form doesn't persist changes to database | `bug-l1-category-update-failure` | | Not Started | High | | |
-| L1-B3 | Comment Timezone Display | Comments show UTC timestamps instead of user's local timezone | `bug-l1-comment-timezone` | | Not Started | Medium | | |
-| L1-B4 | Duplicate Ticket Creation | Single form submission creates two identical tickets | `bug-l1-duplicate-ticket-creation` | | Not Started | Critical | | |
-| L1-B5 | KB Search No Results | Knowledge Base search returns empty results for valid queries | `bug-l1-kb-search-failure` | | Not Started | High | | |
+| L1-B1 | Navigation Broken Links | Sidebar navigation links return 404 errors for valid routes | `bug-l1-navigation-broken-links` |Dari | Completed | High |5 | |
+| L1-B2 | Category Update Failure | Category edit form doesn't persist changes to database | `bug-l1-category-update-failure` | Safa| In Review | High |7 | |
+| L1-B3 | Comment Timezone Display | Comments show UTC timestamps instead of user's local timezone | `bug-l1-comment-timezone` |Jason | Completed | Medium |3 | |
+| L1-B4 | Duplicate Ticket Creation | Single form submission creates two identical tickets | `bug-l1-duplicate-ticket-creation` | Safa| Completed | Critical |2 | |
+| L1-B5 | KB Search No Results | Knowledge Base search returns empty results for valid queries | `bug-l1-kb-search-failure` |Dari | Completed | High |6 | |
 
 ---
 
@@ -59,7 +59,7 @@
 
 | ID | Task Name | Description | Branch | Assignee | Status | Priority | PR # | Est. Hours | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| L1-E1 | Comment Editing | Allow users to edit comments within 24 hours with edit history | `enhancement-l1-comment-editing` | | Not Started | Medium | | 6-8 | |
+| L1-E1 | Comment Editing | Allow users to edit comments within 24 hours with edit history | `enhancement-l1-comment-editing` | Safa| Completed | Medium |? | 6-8 |Was already completed by Ashoka Shringla! |
 | L1-E2 | Ticket Reopening | Enable reopening resolved tickets within 10 business days | `enhancement-l1-ticket-reopening` | | Not Started | Medium | | 8-10 | |
 | L1-E3 | KB Title Search | Frontend search interface for Knowledge Base articles | `enhancement-l1-kb-title-search` | | Not Started | Medium | | 6-8 | |
 | L1-E4 | AI Ticket Summary | AI-powered summaries for long ticket conversations | `enhancement-l1-ai-ticket-summary` | | Not Started | Low | | 8-10 | Requires Google API Key |
@@ -72,10 +72,10 @@
 | ID | Task Name | Description | Branch | Assignee | Status | Priority | PR # | Notes |
 |---|---|---|---|---|---|---|---|---|
 | L2-B1 | KB Editor Empty Content | Article editor loads with empty content despite data existing | `bug-l2-kb-edit-content-missing` | | Not Started | High | | |
-| L2-B2 | SLA Weekend Calculation | SLA calculations don't account for business days | `bug-l2-sla-weekend-calculation` | | Not Started | Medium | | |
+| L2-B2 | SLA Weekend Calculation | SLA calculations don't account for business days | `bug-l2-sla-weekend-calculation` |Dari | In Progress | Medium | | |
 | L2-B3 | Assignment Workload Ignored | Agent assignment doesn't properly distribute workload | `bug-l2-assignment-workload-ignored` | | Not Started | Medium | | |
 | L2-B4 | AI Tags Title Only | AI tag generation only analyzes article titles, not content | `bug-l2-ai-tags-title-only` | | Not Started | Low | | Requires Google API Key |
-| L2-B5 | File Size Display | File sizes show in bytes instead of KB/MB | `bug-l2-file-size-display` | | Not Started | Low | | |
+| L2-B5 | File Size Display | File sizes show in bytes instead of KB/MB | `bug-l2-file-size-display` |Jason | Completed | Low |4 | |
 
 ---
 
@@ -107,7 +107,7 @@
 
 | ID | Task Name | Description | Branch | Assignee | Status | Priority | PR # | Est. Hours | Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| L3-E1 | Chat with Knowledge Base | RAG-based chatbot for KB article queries | `enhancement-l3-kb-chat` | | Not Started | Medium | | 20-24 | Complex AI integration |
+| L3-E1 | Chat with Knowledge Base | RAG-based chatbot for KB article queries | `enhancement-l3-kb-chat` |Jason | In Progress | Medium | | 20-24 | Complex AI integration |
 | L3-E2 | Live Agent Chat | Real-time chat between users and agents | `enhancement-l3-live-agent-chat` | | Not Started | High | | 20-24 | WebSocket implementation |
 | L3-E3 | Escalations & Reassignment | Automatic ticket escalation based on SLA/priority | `enhancement-l3-escalations` | | Not Started | High | | 16-20 | Complex business logic |
 | L3-E4 | NLP Sentiment Analysis | Real-time sentiment analysis of ticket content | `enhancement-l3-sentiment-analysis` | | Not Started | Low | | 16-20 | Requires AI integration |
