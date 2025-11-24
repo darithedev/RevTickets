@@ -55,8 +55,8 @@ export default function KnowledgeBasePage() {
     try {
       setIsSearching(true);
       // BUG: Always return empty results regardless of query
-      // const results = await articlesApi.search({ q: query });
-      const results: Article[] = [];
+      const results = await articlesApi.search({ q: query });
+      // const results: Article[] = [];
       setSearchResults(results);
       setShowSearchResults(true);
     } catch (error) {
