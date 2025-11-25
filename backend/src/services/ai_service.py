@@ -4,10 +4,18 @@ from .ticket_service import TicketService
 from .comment_service import CommentService
 from src.schemas.summary import TicketSummaryResponse
 from src.schemas.closing_comments import ClosingComments
+from fastapi import HTTPException
+from src.langchain_app.config.model_config import llm
 
 class AIService:
     @staticmethod
     async def get_ticket_summary(ticket_id: str) -> str:
+        if llm is None:
+            raise HTTPException(
+                status_code=503,
+                detail="AI features are not available. Please configure GOOGLE_API_KEY environment variable."
+            )
+        
         ticket = await TicketService.get_ticket(ticket_id)
 
         if not ticket:
@@ -31,6 +39,12 @@ class AIService:
         return TicketSummaryResponse(summary=summary)
     @staticmethod
     async def get_closing_comments(ticket_id: str) -> str:
+        if llm is None:
+            raise HTTPException(
+                status_code=503,
+                detail="AI features are not available. Please configure GOOGLE_API_KEY environment variable."
+            )
+        
         ticket = await TicketService.get_ticket(ticket_id)
 
         if not ticket:
