@@ -26,6 +26,9 @@ export const API_ENDPOINTS = {
     STATS: '/tickets/stats',
     SEARCH: '/tickets/search',
     COMMENTS: (ticketId: string) => `/tickets/${ticketId}/comments`,
+    // ENHANCEMENT L1 AI ENDPOINTS
+    SUMMARY: (id: string) => `/tickets/${id}/summary`,
+    CLOSING_COMMENTS: (id: string) => `/tickets/${id}/closing_comments`,
   },
   
   // Categories
@@ -50,6 +53,9 @@ export const API_ENDPOINTS = {
   // Comments
   COMMENTS: {
     BY_ID: (id: string) => `/comments/${id}`,
+    // ENHANCEMENT L1 COMMENT EDITING - Edit endpoint
+    EDIT: (id: string) => `/comments/${id}`,
+    CAN_EDIT: (id: string) => `/comments/${id}/can-edit`,
   },
   
   // Articles (Knowledge Base)
@@ -57,5 +63,18 @@ export const API_ENDPOINTS = {
     BASE: '/articles',
     BY_ID: (id: string) => `/articles/${id}`,
     SEARCH: '/articles/search',
+    // ENHANCEMENT L2 AI KB TAGS - AI tag generation endpoints
+    GENERATE_TAGS: '/articles/generate-tags',
+    GENERATE_TAGS_FROM_ARTICLE: (id: string) => `/articles/${id}/generate-tags`,
+    UPDATE_AI_TAGS: (id: string) => `/articles/${id}/ai-tags`,
+  },
+  
+  // ENHANCEMENT L2: FILE ATTACHMENTS - File API endpoints
+  FILES: {
+    UPLOAD: '/files/upload',
+    DOWNLOAD: (id: string) => `/files/${id}/download`,
+    // Ticket file attachment endpoints
+    ATTACH_TO_TICKET: (ticketId: string) => `/files/tickets/${ticketId}/attach`,
+    GET_TICKET_FILES: (ticketId: string) => `/files/tickets/${ticketId}`,
   },
 } as const;
