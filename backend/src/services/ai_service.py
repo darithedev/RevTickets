@@ -5,12 +5,12 @@ from .ticket_service import TicketService
 from .comment_service import CommentService
 from src.schemas.summary import TicketSummaryResponse
 from src.schemas.closing_comments import ClosingComments
-from fastapi import HTTPException
 from src.langchain_app.config.model_config import llm
 # ENHANCEMENT L1 AI CLOSING SUGGESTIONS - Additional imports for direct database access
 from src.models.ticket import Ticket
 from src.models.comment import Comment
 from beanie import PydanticObjectId
+from fastapi import HTTPException
 
 class AIService:
     @staticmethod
