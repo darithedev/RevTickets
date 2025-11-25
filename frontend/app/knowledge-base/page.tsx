@@ -198,7 +198,7 @@ export default function KnowledgeBasePage() {
               <div className="text-center py-12">
                 <div className="text-gray-500 dark:text-gray-400">
                   <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  {showingSearchResults ? (
+                  {showSearchResults ? (
                     <>
                       <h3 className="text-lg font-medium mb-2">No articles found</h3>
                       <p className="text-sm">No articles match your search for &ldquo;{searchQuery}&rdquo;</p>
