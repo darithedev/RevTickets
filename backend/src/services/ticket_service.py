@@ -100,6 +100,7 @@ class TicketService:
             created_at=ticket.created_at,
             updated_at=ticket.updated_at,
             closed_at=ticket.closed_at,
+            reopen_history=ticket.reopen_history if ticket.reopen_history else [],
             category=category,
             sub_category=subcategory,
             tag_ids=tag_data,
@@ -518,6 +519,25 @@ class TicketService:
                 detail="Ticket cannot be reopened. Either it's not closed/resolved or more than 10 business days have passed."
             )
         
+        # Get the ticket to record reopen history
+        ticket = await Ticket.get(ticket_id)
+        if not ticket:
+            raise HTTPException(status_code=404, detail="Ticket not found")
+        
+        # Add reopen event to history
+        reopen_event = {
+            "reopened_at": datetime.now(timezone.utc),
+            "previous_status": ticket.status.value
+        }
+        
+        if ticket.reopen_history is None:
+            ticket.reopen_history = []
+        ticket.reopen_history.append(reopen_event)
+        
+        # Save the history first
+        await ticket.save()
+        
+        # Change status to in_progress (valid transition from closed/resolved)
         return await TicketService.update_ticket_status(ticket_id, TicketStatus.in_progress)
 
     @staticmethod

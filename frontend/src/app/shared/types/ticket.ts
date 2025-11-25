@@ -12,6 +12,11 @@ export interface RichTextContent {
   text: string;
 }
 
+export interface ReopenEvent {
+  reopenedAt: string;
+  previousStatus: TicketStatus;
+}
+
 export interface Ticket {
   id: string;
   title: string;
@@ -26,6 +31,7 @@ export interface Ticket {
   createdAt: string;
   updatedAt: string;
   closedAt?: string;
+  reopenHistory?: ReopenEvent[];
   // ENHANCEMENT L1 AI TICKET SUMMARY - Add AI summary fields
   aiSummary?: string;
   summaryGeneratedAt?: string;

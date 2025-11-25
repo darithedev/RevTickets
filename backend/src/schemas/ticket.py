@@ -39,6 +39,21 @@ class TicketCreate(BaseModel):
 class TicketUpdate(TicketBase):
     tagIds: Optional[List[str]]
 
+class ReopenEvent(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    
+    reopened_at: datetime = Field(alias="reopenedAt")
+    previous_status: str = Field(alias="previousStatus")
+    
+    @field_serializer('reopened_at', when_used='always')
+    def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
+        """Serialize datetime to ISO format with timezone (Z suffix for UTC)"""
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat().replace('+00:00', 'Z')
+
 class TicketResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     
@@ -57,6 +72,7 @@ class TicketResponse(BaseModel):
     created_at: datetime = Field(alias="createdAt")
     updated_at: datetime = Field(alias="updatedAt")
     closed_at: Optional[datetime] = Field(None, alias="closedAt")
+    reopen_history: Optional[List[ReopenEvent]] = Field(default_factory=list, alias="reopenHistory")
     
     @field_serializer('created_at', 'updated_at', 'closed_at', when_used='always')
     def serialize_datetime(self, dt: Optional[datetime]) -> Optional[str]:
@@ -68,5 +84,3 @@ class TicketResponse(BaseModel):
             dt = dt.replace(tzinfo=timezone.utc)
         # Return ISO format string with 'Z' suffix for UTC
         return dt.isoformat().replace('+00:00', 'Z')
-
-
