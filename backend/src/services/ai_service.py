@@ -5,6 +5,7 @@ from .ticket_service import TicketService
 from .comment_service import CommentService
 from src.schemas.summary import TicketSummaryResponse
 from src.schemas.closing_comments import ClosingComments
+from src.langchain_app.config.model_config import llm
 # ENHANCEMENT L1 AI CLOSING SUGGESTIONS - Additional imports for direct database access
 from src.models.ticket import Ticket
 from src.models.comment import Comment
@@ -14,9 +15,11 @@ from fastapi import HTTPException
 class AIService:
     @staticmethod
     async def get_ticket_summary(ticket_id: str) -> str:
-        # Import here to avoid circular imports
-        from src.models.ticket import Ticket
-        from beanie import PydanticObjectId
+        if llm is None:
+            raise HTTPException(
+                status_code=503,
+                detail="AI features are not available. Please configure GOOGLE_API_KEY environment variable."
+            )
         
         # Get the raw ticket model directly from database
         try:
@@ -69,6 +72,12 @@ class AIService:
     # ENHANCEMENT L1 AI CLOSING SUGGESTIONS - Generate AI-powered closing suggestions
     @staticmethod
     async def get_closing_comments(ticket_id: str) -> ClosingComments:
+        if llm is None:
+            raise HTTPException(
+                status_code=503,
+                detail="AI features are not available. Please configure GOOGLE_API_KEY environment variable."
+            )
+        
         # Get ticket directly from database using raw Ticket model
         try:
             ticket_obj_id = PydanticObjectId(ticket_id)
@@ -140,6 +149,12 @@ class AIService:
         Returns:
             List of generated tags
         """
+        if llm is None:
+            raise HTTPException(
+                status_code=503,
+                detail="AI features are not available. Please configure GOOGLE_API_KEY environment variable."
+            )
+        
         # If article_id is provided, fetch the article from database
         if article_id:
             from src.models.article import Article

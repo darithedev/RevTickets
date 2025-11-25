@@ -133,8 +133,26 @@ export function CreateTicketForm() {
               ));
             });
 
-      // Create ticket
-      await ticketsApi.create(ticketData);
+            // Mark as uploaded and add to list
+            uploadedFiles.push(uploadResponse.id);
+            setAttachments(prev => prev.map((att, index) => 
+              index === i ? { ...att, uploaded: true, uploadProgress: 100 } : att
+            ));
+          } catch (uploadError) {
+            console.error('File upload failed:', uploadError);
+            uploadFailed = true;
+            setAttachments(prev => prev.map((att, index) => 
+              index === i ? { 
+                ...att, 
+                uploadError: uploadError instanceof Error ? uploadError.message : 'Upload failed',
+                uploadProgress: 0 
+              } : att
+            ));
+            setErrors({ submit: 'One or more file uploads failed. Please try again or remove the failed attachments.' });
+            return;
+          }
+        }
+      }
       
       // Only proceed if no upload failures
       if (!uploadFailed) {
